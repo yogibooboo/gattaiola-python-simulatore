@@ -7,6 +7,7 @@ import struct
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.signal import find_peaks
+import analisiESP32  # Import del nuovo modulo
 
 # Funzione per generare un nome file con indice progressivo
 def genera_nome_file(base_path="D:\\downloads", nome_base="adc_buffer", estensione=".bin"):
@@ -20,7 +21,7 @@ def genera_nome_file(base_path="D:\\downloads", nome_base="adc_buffer", estensio
 
 # Funzione per acquisire dati dall'ESP32
 async def acquisisci_da_esp32(status_label, percorso_file_var):
-    """Acquisisce i dati dall'ESP32 tramite WebSocket e li salva con un nome progressivo."""
+    """Acquisisci i dati dall'ESP32 tramite WebSocket e li salva con un nome progressivo."""
     uri = "ws://192.168.1.104/ws"  # URI del tuo ESP32
     try:
         status_label.config(text="Stato: Connessione in corso...")
@@ -133,7 +134,7 @@ def decodifica_segnale(picchi, correlazione, periodo_bit_campioni):
 
 # Funzione per visualizzare il file
 def visualizza_file():
-    """Visualizza il segnale, la correlazione e decodifica i bit con CRC."""
+    """Visualizza il segnale, la correlazione con i bit decodificati sopra i picchi e decodifica i byte con CRC."""
     percorso_file = percorso_file_var.get()
     if not percorso_file or not os.path.exists(percorso_file):
         status_label.config(text="Errore: Nessun file selezionato o file non trovato")
@@ -150,8 +151,11 @@ def visualizza_file():
     campioni_per_bit = int(durata_bit / periodo_campionamento)
     larghezza_finestra = int((durata_bit / 4) / periodo_campionamento)
 
-    # Filtraggio
-    segnale_filtrato = media_scorrevole(segnale_normalizzato, larghezza_finestra)
+    # Filtraggio (opzionale in base al checkbox)
+    if media_scorrevole_var.get():  # Se il checkbox è selezionato
+        segnale_filtrato = media_scorrevole(segnale_normalizzato, larghezza_finestra)
+    else:
+        segnale_filtrato = segnale_normalizzato  # Passa il segnale inalterato
     segnale_filtrato = np.nan_to_num(segnale_filtrato)
 
     # Correlazione e picchi
@@ -172,13 +176,44 @@ def visualizza_file():
     ax1.set_title('Segnale Normalizzato')
     ax1.legend()
 
-    # Grafico 2: Correlazione e picchi
+    # Grafico 2: Correlazione, picchi e numeri dei bit
     ax2.plot(correlazione, label='Correlazione')
     ax2.plot(picchi, correlazione[picchi], "x", label='Picchi')
     for i in range(0, len(correlazione), campioni_per_bit):
         ax2.axvline(i, color='black', linestyle='-', linewidth=0.8)
         ax2.axvline(i + campioni_per_bit // 2, color='gray', linestyle='--', linewidth=0.5)
-    ax2.set_title('Correlazione e Picchi')
+
+    # Visualizzazione dei bit come numeri sopra i picchi
+    distanze = np.diff(picchi)
+    soglia_mezzo_bit = campioni_per_bit * 3 // 4
+    i = 0
+    offset_verticale = 0.0125 * max(np.abs(correlazione))  # Offset dimezzato ulteriormente
+    while i < len(distanze):
+        if distanze[i] < soglia_mezzo_bit:
+            if i + 1 < len(distanze) and distanze[i + 1] < soglia_mezzo_bit:
+                # Bit 0: primo picco = 0 (nero), secondo picco = 2 (verde)
+                ax2.text(picchi[i], correlazione[picchi[i]] + offset_verticale, '0', 
+                         color='black', ha='center', va='bottom', weight='bold')
+                ax2.text(picchi[i + 1], correlazione[picchi[i + 1]] + offset_verticale, '2', 
+                         color='green', ha='center', va='bottom', weight='bold')
+                i += 2
+            else:
+                # Transizione non valida: 2 (verde)
+                ax2.text(picchi[i], correlazione[picchi[i]] + offset_verticale, '2', 
+                         color='green', ha='center', va='bottom', weight='bold')
+                i += 1
+        else:
+            # Bit 1: 1 (blu)
+            ax2.text(picchi[i], correlazione[picchi[i]] + offset_verticale, '1', 
+                     color='blue', ha='center', va='bottom', weight='bold')
+            i += 1
+        if i < len(distanze) and i >= len(bits):
+            # Fine sequenza o errore: 3 (rosso)
+            ax2.text(picchi[i], correlazione[picchi[i]] + offset_verticale, '3', 
+                     color='red', ha='center', va='bottom', weight='bold')
+            i += 1
+
+    ax2.set_title('Correlazione e Picchi con Bit (0=Nero, 1=Blu, 2=Verde, 3=Rosso)')
     ax2.legend()
 
     # Aggiorna la figura
@@ -210,6 +245,17 @@ def visualizza_file():
 
     status_label.config(text="Stato: Visualizzazione e decodifica completate")
 
+# Funzione per chiamare l'analisi ESP32
+def analizza_file():
+    """Chiama la funzione di analisi a buffer scorrevole da analisiESP32.py."""
+    percorso_file = percorso_file_var.get()
+    if not percorso_file or not os.path.exists(percorso_file):
+        status_label.config(text="Errore: Nessun file selezionato o file non trovato")
+        return
+    status_label.config(text="Stato: Analisi ESP32 in corso...")
+    analisiESP32.analizza_con_buffer_scorrevole(percorso_file, status_label)
+    status_label.config(text="Stato: Analisi ESP32 completata")
+
 # Funzione per sincronizzare gli assi
 def sincronizza_assi(event):
     """Sincronizza i limiti orizzontali tra i due grafici."""
@@ -226,6 +272,9 @@ window.title("Acquisizione Segnale ESP32")
 # Variabile per il percorso del file
 percorso_file_var = tk.StringVar(value="")
 
+# Variabile per il checkbox della media scorrevole
+media_scorrevole_var = tk.BooleanVar(value=True)  # Default: abilitata
+
 # Layout della GUI
 tk.Label(window, text="File:").grid(row=0, column=0, padx=5, pady=5)
 tk.Entry(window, textvariable=percorso_file_var, width=50).grid(row=0, column=1, padx=5, pady=5)
@@ -233,19 +282,23 @@ tk.Button(window, text="Scegli File", command=seleziona_file).grid(row=0, column
 
 tk.Button(window, text="Acquisisci da ESP32", command=avvia_acquisizione).grid(row=1, column=1, padx=5, pady=5)
 tk.Button(window, text="Visualizza", command=visualizza_file).grid(row=2, column=1, padx=5, pady=5)
+tk.Button(window, text="Analizza", command=analizza_file).grid(row=3, column=1, padx=5, pady=5)
+
+# Checkbox per abilitare/disabilitare la media scorrevole
+tk.Checkbutton(window, text="Abilita Media Scorrevole", variable=media_scorrevole_var).grid(row=4, column=1, padx=5, pady=5)
 
 status_label = tk.Label(window, text="Stato: Inattivo")
-status_label.grid(row=3, column=1, padx=5, pady=5)
+status_label.grid(row=5, column=1, padx=5, pady=5)
 
 # Area di testo per i bit
-tk.Label(window, text="Bit Decodificati:").grid(row=4, column=0, padx=5, pady=5, sticky="w")
+tk.Label(window, text="Bit Decodificati:").grid(row=6, column=0, padx=5, pady=5, sticky="w")
 bits_text = tk.Text(window, height=5, width=60)
-bits_text.grid(row=5, column=0, columnspan=3, padx=5, pady=5)
+bits_text.grid(row=7, column=0, columnspan=3, padx=5, pady=5)
 
 # Area di testo per i byte e CRC
-tk.Label(window, text="Byte e CRC:").grid(row=6, column=0, padx=5, pady=5, sticky="w")
-risultato_text = tk.Text(window, height=10, width=60)
-risultato_text.grid(row=7, column=0, columnspan=3, padx=5, pady=5)
+tk.Label(window, text="Byte e CRC:").grid(row=8, column=0, padx=5, pady=5, sticky="w")
+risultato_text = tk.Text(window, height=20, width=60)
+risultato_text.grid(row=9, column=0, columnspan=3, padx=5, pady=5)
 
 # Creazione della figura Matplotlib
 fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 9))

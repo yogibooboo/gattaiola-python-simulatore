@@ -9,6 +9,7 @@ def media_correlazione_32(segnale, larghezza_finestra=8, lunghezza_correlazione=
     segnale_filtrato32 = np.zeros(N, dtype=np.int32)
     correlazione32 = np.zeros(N, dtype=np.int32)
     picchi32 = []
+    distanze32 = []  # Nuovo buffer per le distanze
 
     for i in range(28):
         segnale_filtrato32[i] = 0
@@ -42,6 +43,9 @@ def media_correlazione_32(segnale, larghezza_finestra=8, lunghezza_correlazione=
             max_i8 = max(correlazione32[i-24], max_i8)
             if max_i == max_i8:
                 picchi32.append(i-24)
+                # Calcola la distanza se non è il primo picco
+                if len(picchi32) > 1:
+                    distanze32.append(picchi32[-1] - picchi32[-2])
                 stato = -1
                 min_i = correlazione32[i-16]
                 min_i8 = correlazione32[i-24]
@@ -50,12 +54,15 @@ def media_correlazione_32(segnale, larghezza_finestra=8, lunghezza_correlazione=
             min_i8 = min(correlazione32[i-24], min_i8)
             if min_i == min_i8:
                 picchi32.append(i-24)
+                # Calcola la distanza se non è il primo picco
+                if len(picchi32) > 1:
+                    distanze32.append(picchi32[-1] - picchi32[-2])
                 stato = 1
                 max_i = correlazione32[i-16]
                 max_i8 = correlazione32[i-24]
 
     correlazione32[:64] = 0
-    return segnale_filtrato32, correlazione32, picchi32
+    return segnale_filtrato32, correlazione32, picchi32, distanze32  # Aggiunto distanze32
 
 def analizza_con_buffer_scorrevole(percorso_file, status_label):
     periodo_campionamento = 1 / 134.2e3 * 1e6
@@ -66,12 +73,17 @@ def analizza_con_buffer_scorrevole(percorso_file, status_label):
         dati = f.read()
     segnale_32 = np.array(struct.unpack("<" + "h" * (len(dati) // 2), dati), dtype=np.int32)
 
-    segnale_filtrato32, correlazione32, picchi32 = media_correlazione_32(segnale_32)
+    # Aggiornato per ricevere anche distanze32
+    segnale_filtrato32, correlazione32, picchi32, distanze32 = media_correlazione_32(segnale_32)
     status_label.config(text="Stato: Analisi ESP32 - Media e correlazione completate")
 
     visualizza_analisi_esp32(segnale_32, correlazione32, picchi32, campioni_per_bit)
 
-    return []
+    # Stampa di debug per verificare distanze32 (opzionale)
+    print("Picchi:", picchi32)
+    print("Distanze:", distanze32)
+
+    return []  # Puoi restituire distanze32 se necessario
 
 def visualizza_analisi_esp32(segnale_32, correlazione32, picchi32, campioni_per_bit):
     window32 = tk.Tk()
@@ -80,7 +92,6 @@ def visualizza_analisi_esp32(segnale_32, correlazione32, picchi32, campioni_per_
     fig32, (ax1_32, ax2_32) = plt.subplots(2, 1, figsize=(12, 9))
     plt.tight_layout()
 
-    # Grafico 1: Segnale di ingresso
     ax1_32.plot(segnale_32, label="Segnale (32-bit)", color='blue')
     for i in range(0, len(segnale_32), campioni_per_bit):
         ax1_32.axvline(i, color='black', linestyle='-', linewidth=0.8)
@@ -88,10 +99,9 @@ def visualizza_analisi_esp32(segnale_32, correlazione32, picchi32, campioni_per_
     ax1_32.set_title('Segnale di Ingresso (ESP32)')
     ax1_32.legend()
 
-    # Grafico 2: Correlazione con picchi come "x" arancioni più grandi e marcati
     ax2_32.plot(correlazione32, label='Correlazione (32-bit)', color='green')
     ax2_32.plot(picchi32, correlazione32[picchi32], "x", color='darkorange', label='Picchi', 
-                markersize=10, markeredgewidth=2)  # Dimensioni e spessore aumentati
+                markersize=10, markeredgewidth=2)
     for i in range(0, len(correlazione32), campioni_per_bit):
         ax2_32.axvline(i, color='black', linestyle='-', linewidth=0.8)
         ax2_32.axvline(i + campioni_per_bit // 2, color='gray', linestyle='--', linewidth=0.5)

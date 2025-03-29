@@ -4,9 +4,11 @@ import matplotlib.pyplot as plt
 import struct
 
 # Nuova funzione che combina media mobile e correlazione
+
+
 def media_correlazione_32(segnale, larghezza_finestra=8, lunghezza_correlazione=32):
     """
-    Calcola la media mobile e la correlazione scorrevole su interi a 32 bit in un unico loop.
+    Calcola la media mobile, la correlazione scorrevole e rileva i picchi su interi a 32 bit in un unico loop.
     
     Parametri:
     - segnale: array del segnale di ingresso
@@ -16,28 +18,26 @@ def media_correlazione_32(segnale, larghezza_finestra=8, lunghezza_correlazione=
     Ritorna:
     - segnale_filtrato32: array della media mobile
     - correlazione32: array della correlazione scorrevole
+    - picchi32: lista delle posizioni dei picchi rilevati
     """
     N = len(segnale)
     segnale_32 = np.array(segnale, dtype=np.int32)
     segnale_filtrato32 = np.zeros(N, dtype=np.int32)
     correlazione32 = np.zeros(N, dtype=np.int32)
-    
+    picchi32 = []  # Lista per le posizioni dei picchi (in futuro array circolare)
+
     # Azzeramento dei primi valori
-    for i in range(28):  # I primi 28 valori di segnale_filtrato32 sono 0
+    for i in range(28):
         segnale_filtrato32[i] = 0
-    for i in range(16):  # I primi 16 valori di correlazione32 sono 0
+    for i in range(16):
         correlazione32[i] = 0
-    
+
     # Calcolo iniziale per i=32
     i = 32
-    if i < N:
-        # Media mobile iniziale (finestra da i-4 a i+3)
-        if i + 3 < N:
-            somma_media = np.sum(segnale_32[i-4:i+4], dtype=np.int32)
-            segnale_filtrato32[i] = somma_media // larghezza_finestra
-        else:
-            segnale_filtrato32[i] = 0  # Non abbastanza dati
-    
+    if i < N and i + 3 < N:
+        somma_media = np.sum(segnale_32[i-4:i+4], dtype=np.int32)
+        segnale_filtrato32[i] = somma_media // larghezza_finestra
+
     # Correlazione iniziale per i=32, centrata su i-16=16
     if i >= lunghezza_correlazione:
         correlazione32[16] = 0
@@ -45,16 +45,49 @@ def media_correlazione_32(segnale, larghezza_finestra=8, lunghezza_correlazione=
             correlazione32[16] += segnale_filtrato32[j]
         for j in range(16, 32):
             correlazione32[16] -= segnale_filtrato32[j]
-    
-    # Loop principale ottimizzato
+
+    # Inizializzazione per il rilevamento dei picchi
+    max_i = max_i8 = min_i = min_i8 = 0
+    stato = 1  # 1 = cerca massimo, -1 = cerca minimo
+    if N > 8:
+        max_i = min_i = correlazione32[8]
+        max_i8 = min_i8 = correlazione32[0]
+
+    # Loop principale con rilevamento picchi
     for i in range(33, N-4):
-        segnale_filtrato32[i] = segnale_filtrato32[i-1] - segnale_32[i-4] + segnale_32[i+3]
+        # Aggiornamento media mobile
+        segnale_filtrato32[i] = segnale_filtrato32[i-1] - (segnale_32[i-4] // larghezza_finestra) + (segnale_32[i+3] // larghezza_finestra)
+        
+        # Aggiornamento correlazione
         correlazione32[i-16] = correlazione32[i-17] - segnale_filtrato32[i-32] + 2 * segnale_filtrato32[i-16] - segnale_filtrato32[i]
-    
-    # Azzeramento dei primi 64 valori di correlazione32 DOPO il calcolo
+
+        # 
+        # Rilevamento picchi (solo dopo i primi 8 campioni)
+
+        if stato == 1:  #stiamo cercando il massimo
+            max_i  = max(correlazione32[i-16], max_i)
+            max_i8 = max(correlazione32[i-24], max_i8)
+            if max_i == max_i8:
+            #abbiamo trovato il massimo
+                picchi32.append(i-24)
+                stato=-1
+                min_i=correlazione32[i-16]
+                min_i8=correlazione32[i-24]
+        else:
+            min_i  = min(correlazione32[i-16], min_i)
+            min_i8 = min(correlazione32[i-24], min_i8)
+            if min_i == min_i8:
+            #abbiamo trovato il minimo
+                picchi32.append(i-24)
+                stato=1
+                max_i=correlazione32[i-16]
+                max_i8=correlazione32[i-24]
+
+
+    # Azzeramento dei primi 64 valori di correlazione32
     correlazione32[:64] = 0
-    
-    return segnale_filtrato32, correlazione32
+
+    return segnale_filtrato32, correlazione32, picchi32
 
 # Funzione principale per l'analisi
 def analizza_con_buffer_scorrevole(percorso_file, status_label):
@@ -72,7 +105,7 @@ def analizza_con_buffer_scorrevole(percorso_file, status_label):
     segnale_32 = np.array(struct.unpack("<" + "h" * (len(dati) // 2), dati), dtype=np.int32)
 
     # Calcolo della media mobile e della correlazione
-    segnale_filtrato32, correlazione32 = media_correlazione_32(segnale_32)
+    segnale_filtrato32, correlazione32, picchi32 = media_correlazione_32(segnale_32)
 
     # Aggiornamento dello stato
     status_label.config(text="Stato: Analisi ESP32 - Media e correlazione completate")

@@ -9,7 +9,11 @@ def media_correlazione_32(segnale, larghezza_finestra=8, lunghezza_correlazione=
     segnale_filtrato32 = np.zeros(N, dtype=np.int32)
     correlazione32 = np.zeros(N, dtype=np.int32)
     picchi32 = []
-    distanze32 = []  # Nuovo buffer per le distanze
+    distanze32 = []
+    bits32 = []
+    soglia_mezzo_bit = 24
+    stato_decodifica = 0
+    ultima_distanza = 0
 
     for i in range(28):
         segnale_filtrato32[i] = 0
@@ -43,9 +47,19 @@ def media_correlazione_32(segnale, larghezza_finestra=8, lunghezza_correlazione=
             max_i8 = max(correlazione32[i-24], max_i8)
             if max_i == max_i8:
                 picchi32.append(i-24)
-                # Calcola la distanza se non è il primo picco
                 if len(picchi32) > 1:
-                    distanze32.append(picchi32[-1] - picchi32[-2])
+                    nuova_distanza = picchi32[-1] - picchi32[-2]
+                    distanze32.append(nuova_distanza)
+                    if stato_decodifica == 0:
+                        if nuova_distanza >= soglia_mezzo_bit:
+                            bits32.append((1, i-24))
+                        else:
+                            ultima_distanza = nuova_distanza
+                            stato_decodifica = 1
+                    elif stato_decodifica == 1:
+                        if nuova_distanza < soglia_mezzo_bit:
+                            bits32.append((0, i-24))
+                        stato_decodifica = 0
                 stato = -1
                 min_i = correlazione32[i-16]
                 min_i8 = correlazione32[i-24]
@@ -54,15 +68,25 @@ def media_correlazione_32(segnale, larghezza_finestra=8, lunghezza_correlazione=
             min_i8 = min(correlazione32[i-24], min_i8)
             if min_i == min_i8:
                 picchi32.append(i-24)
-                # Calcola la distanza se non è il primo picco
                 if len(picchi32) > 1:
-                    distanze32.append(picchi32[-1] - picchi32[-2])
+                    nuova_distanza = picchi32[-1] - picchi32[-2]
+                    distanze32.append(nuova_distanza)
+                    if stato_decodifica == 0:
+                        if nuova_distanza >= soglia_mezzo_bit:
+                            bits32.append((1, i-24))
+                        else:
+                            ultima_distanza = nuova_distanza
+                            stato_decodifica = 1
+                    elif stato_decodifica == 1:
+                        if nuova_distanza < soglia_mezzo_bit:
+                            bits32.append((0, i-24))
+                        stato_decodifica = 0
                 stato = 1
                 max_i = correlazione32[i-16]
                 max_i8 = correlazione32[i-24]
 
     correlazione32[:64] = 0
-    return segnale_filtrato32, correlazione32, picchi32, distanze32  # Aggiunto distanze32
+    return segnale_filtrato32, correlazione32, picchi32, distanze32, bits32
 
 def analizza_con_buffer_scorrevole(percorso_file, status_label):
     periodo_campionamento = 1 / 134.2e3 * 1e6
@@ -73,19 +97,18 @@ def analizza_con_buffer_scorrevole(percorso_file, status_label):
         dati = f.read()
     segnale_32 = np.array(struct.unpack("<" + "h" * (len(dati) // 2), dati), dtype=np.int32)
 
-    # Aggiornato per ricevere anche distanze32
-    segnale_filtrato32, correlazione32, picchi32, distanze32 = media_correlazione_32(segnale_32)
-    status_label.config(text="Stato: Analisi ESP32 - Media e correlazione completate")
+    segnale_filtrato32, correlazione32, picchi32, distanze32, bits32 = media_correlazione_32(segnale_32)
+    status_label.config(text="Stato: Analisi ESP32 - Media, correlazione e decodifica completate")
 
-    visualizza_analisi_esp32(segnale_32, correlazione32, picchi32, campioni_per_bit)
-
-    # Stampa di debug per verificare distanze32 (opzionale)
     print("Picchi:", picchi32)
     print("Distanze:", distanze32)
+    print("Bit decodificati (bit, posizione):", bits32)
 
-    return []  # Puoi restituire distanze32 se necessario
+    visualizza_analisi_esp32(segnale_32, correlazione32, picchi32, bits32, campioni_per_bit)
 
-def visualizza_analisi_esp32(segnale_32, correlazione32, picchi32, campioni_per_bit):
+    return []
+
+def visualizza_analisi_esp32(segnale_32, correlazione32, picchi32, bits32, campioni_per_bit):
     window32 = tk.Tk()
     window32.title("Analisi ESP32")
 
@@ -102,10 +125,21 @@ def visualizza_analisi_esp32(segnale_32, correlazione32, picchi32, campioni_per_
     ax2_32.plot(correlazione32, label='Correlazione (32-bit)', color='green')
     ax2_32.plot(picchi32, correlazione32[picchi32], "x", color='darkorange', label='Picchi', 
                 markersize=10, markeredgewidth=2)
+    # Separa bit 0 e bit 1
+    bit0_posizioni = [pos for bit, pos in bits32 if bit == 0]
+    bit0_valori = [correlazione32[pos] for bit, pos in bits32 if bit == 0]
+    bit1_posizioni = [pos for bit, pos in bits32 if bit == 1]
+    bit1_valori = [correlazione32[pos] for bit, pos in bits32 if bit == 1]
+    # Plot bit 0 (cerchi blu)
+    ax2_32.plot(bit0_posizioni, bit0_valori, "o", color='blue', label='Bit 0', 
+                markersize=8, markeredgewidth=1.5)
+    # Plot bit 1 (cerchi rossi)
+    ax2_32.plot(bit1_posizioni, bit1_valori, "o", color='red', label='Bit 1', 
+                markersize=8, markeredgewidth=1.5)
     for i in range(0, len(correlazione32), campioni_per_bit):
         ax2_32.axvline(i, color='black', linestyle='-', linewidth=0.8)
         ax2_32.axvline(i + campioni_per_bit // 2, color='gray', linestyle='--', linewidth=0.5)
-    ax2_32.set_title('Correlazione (ESP32) con Picchi')
+    ax2_32.set_title('Correlazione (ESP32) con Picchi e Bit')
     ax2_32.legend()
 
     def sincronizza_assi_32(event):

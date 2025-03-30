@@ -3,6 +3,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import struct
 
+
+
 def media_correlazione_32(segnale, larghezza_finestra=8, lunghezza_correlazione=32):
     N = len(segnale)
     segnale_32 = np.array(segnale, dtype=np.int32)
@@ -161,8 +163,8 @@ def media_correlazione_32(segnale, larghezza_finestra=8, lunghezza_correlazione=
 
                 case 1:     #fase di decodifica bytes
                     if contatore_bits<8:                #dobbiamo infilare i bit nei bytes letti
-                        bytes32[contatore_bytes] <<= 1
-                        bytes32[contatore_bytes]|=newbit
+                        bytes32[contatore_bytes] >>= 1
+                        if newbit==1: bytes32[contatore_bytes]|=0x80
                         contatore_bits+=1
                     else:
                         if newbit==1:       #abbiamo correttamente trovato il sincronismo
@@ -173,6 +175,24 @@ def media_correlazione_32(segnale, larghezza_finestra=8, lunghezza_correlazione=
                                 contatore_zeri=0
                                 contatore_bytes=0
                                 stato_decobytes=0
+                                
+                                # calcolo crc
+                                dati = bytes32    #[:-2]
+                                crc = 0x0  # Valore iniziale
+                                polynomial = 0x1021
+                                for byte in bytes32:
+                                    b = byte
+                                    for i in range(8):
+                                        bit = ((b >> i) & 1) == 1
+                                        c15 = ((crc >> 15) & 1) == 1
+                                        crc <<= 1
+                                        if c15 ^ bit:
+                                            crc ^= polynomial
+                                    crc &= 0xffff
+                            
+                                
+                                if crc==0: print ("CRC OK")
+                                else: print("CRC",f"{crc:04X}")
 
                         else:               #abbiamo perso il sincronismo. ricominciamo daccapo
                             print("perso sync at: ", i)

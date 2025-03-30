@@ -13,7 +13,16 @@ def media_correlazione_32(segnale, larghezza_finestra=8, lunghezza_correlazione=
     bits32 = []
     soglia_mezzo_bit = 24
     stato_decodifica = 0
+    contatore_zeri = 0
+    contatore_bytes=0
+    contatore_bits=0
+    stato_decobytes = 0
     ultima_distanza = 0
+    newbit=0
+    duebit=False
+    newpeak=False
+    numbit=0
+    bytes32 = [0,0,0,0,0,0,0,0,0,0]
 
     for i in range(28):
         segnale_filtrato32[i] = 0
@@ -42,48 +51,137 @@ def media_correlazione_32(segnale, larghezza_finestra=8, lunghezza_correlazione=
         segnale_filtrato32[i] = segnale_filtrato32[i-1] - (segnale_32[i-4] // larghezza_finestra) + (segnale_32[i+3] // larghezza_finestra)
         correlazione32[i-16] = correlazione32[i-17] - segnale_filtrato32[i-32] + 2 * segnale_filtrato32[i-16] - segnale_filtrato32[i]
 
-        if stato == 1:
+        newbit=2    #se trovo un nuovo bit diventa 0 o 1
+        numbit=0
+        newpeak=False
+        # if stato == 1:    #cerchiamo un picco massimo
+        #     max_i = max(correlazione32[i-16], max_i)
+        #     max_i8 = max(correlazione32[i-24], max_i8)
+        #     if max_i == max_i8:
+        #         picchi32.append(i-24)
+        #         if len(picchi32) > 1:
+        #             nuova_distanza = picchi32[-1] - picchi32[-2]
+        #             distanze32.append(nuova_distanza)
+        #             if stato_decodifica == 0:
+        #                 if nuova_distanza >= soglia_mezzo_bit:
+        #                     bits32.append((1, i-24))
+        #                     newbit=1
+        #                 else:
+        #                     ultima_distanza = nuova_distanza
+        #                     stato_decodifica = 1
+        #             elif stato_decodifica == 1:
+        #                 if nuova_distanza < soglia_mezzo_bit:
+        #                     bits32.append((0, i-24))
+        #                     newbit=0
+        #                 stato_decodifica = 0
+        #         stato = -1
+        #         min_i = correlazione32[i-16]
+        #         min_i8 = correlazione32[i-24]
+        # else:       #cerchiamo un picco minimo
+        #     min_i = min(correlazione32[i-16], min_i)
+        #     min_i8 = min(correlazione32[i-24], min_i8)
+        #     if min_i == min_i8:
+        #         picchi32.append(i-24)
+        #         if len(picchi32) > 1:
+        #             nuova_distanza = picchi32[-1] - picchi32[-2]
+        #             distanze32.append(nuova_distanza)
+        #             if stato_decodifica == 0:
+        #                 if nuova_distanza >= soglia_mezzo_bit:
+        #                     bits32.append((1, i-24))
+        #                     newbit=1
+        #                 else:
+        #                     ultima_distanza = nuova_distanza
+        #                     stato_decodifica = 1
+        #             elif stato_decodifica == 1:
+        #                 if nuova_distanza < soglia_mezzo_bit:
+        #                     bits32.append((0, i-24))
+        #                     newbit=0
+        #                 stato_decodifica = 0
+        #         stato = 1
+        #         max_i = correlazione32[i-16]
+        #         max_i8 = correlazione32[i-24]
+
+        if stato == 1:    #cerchiamo un picco massimo
             max_i = max(correlazione32[i-16], max_i)
             max_i8 = max(correlazione32[i-24], max_i8)
             if max_i == max_i8:
                 picchi32.append(i-24)
-                if len(picchi32) > 1:
-                    nuova_distanza = picchi32[-1] - picchi32[-2]
-                    distanze32.append(nuova_distanza)
-                    if stato_decodifica == 0:
-                        if nuova_distanza >= soglia_mezzo_bit:
-                            bits32.append((1, i-24))
-                        else:
-                            ultima_distanza = nuova_distanza
-                            stato_decodifica = 1
-                    elif stato_decodifica == 1:
-                        if nuova_distanza < soglia_mezzo_bit:
-                            bits32.append((0, i-24))
-                        stato_decodifica = 0
                 stato = -1
                 min_i = correlazione32[i-16]
                 min_i8 = correlazione32[i-24]
-        else:
+                newpeak=True
+        else:       #cerchiamo un picco minimo
             min_i = min(correlazione32[i-16], min_i)
             min_i8 = min(correlazione32[i-24], min_i8)
             if min_i == min_i8:
                 picchi32.append(i-24)
-                if len(picchi32) > 1:
-                    nuova_distanza = picchi32[-1] - picchi32[-2]
-                    distanze32.append(nuova_distanza)
-                    if stato_decodifica == 0:
-                        if nuova_distanza >= soglia_mezzo_bit:
-                            bits32.append((1, i-24))
-                        else:
-                            ultima_distanza = nuova_distanza
-                            stato_decodifica = 1
-                    elif stato_decodifica == 1:
-                        if nuova_distanza < soglia_mezzo_bit:
-                            bits32.append((0, i-24))
-                        stato_decodifica = 0
                 stato = 1
                 max_i = correlazione32[i-16]
                 max_i8 = correlazione32[i-24]
+                newpeak=True
+
+        if len(picchi32) > 1 and newpeak:
+            nuova_distanza = picchi32[-1] - picchi32[-2]
+            distanze32.append(nuova_distanza)
+            if stato_decodifica == 0:
+                if nuova_distanza >= soglia_mezzo_bit:
+                    bits32.append((1, i-24))
+                    newbit=1
+                    numbit=1
+                else:
+                    ultima_distanza = nuova_distanza
+                    stato_decodifica = 1
+            elif stato_decodifica == 1:
+                if nuova_distanza < soglia_mezzo_bit:
+                    bits32.append((0, i-24))
+                    newbit=0
+                    numbit=1
+                else:
+                    bits32.append((1, i-24-nuova_distanza))   #si suppene che erano due uni   (poi vediamo meglio)
+                    bits32.append((1, i-24))
+                    newbit=1
+                    numbit=2
+                stato_decodifica = 0
+        
+
+
+        while numbit>0:
+            match stato_decobytes:
+                case 0:   #cerca il primo 1 dopo almeno 10 consecuivi
+                    if newbit==0:
+                        contatore_zeri+=1
+                    else:
+                        if contatore_zeri>=10:
+                            stato_decobytes=1
+                            contatore_bytes=0
+                            contatore_bits=0
+                            bytes32 = [0] * 10  # Inizializza bytes32 con 10 zeri
+                            print("sequenza sync at: ", i)
+                        contatore_zeri=0        
+
+                case 1:     #fase di decodifica bytes
+                    if contatore_bits<8:                #dobbiamo infilare i bit nei bytes letti
+                        bytes32[contatore_bytes] <<= 1
+                        bytes32[contatore_bytes]|=newbit
+                        contatore_bits+=1
+                    else:
+                        if newbit==1:       #abbiamo correttamente trovato il sincronismo
+                            contatore_bytes+=1
+                            contatore_bits=0
+                            if contatore_bytes>=10:    #abbiamo letto i dieci bytes
+                                print("Byte estratti:", bytes32)
+                                contatore_zeri=0
+                                contatore_bytes=0
+                                stato_decobytes=0
+
+                        else:               #abbiamo perso il sincronismo. ricominciamo daccapo
+                            print("perso sync at: ", i)
+                            contatore_zeri=0
+                            contatore_bits=0        
+                            stato_decobytes=0
+            numbit-=1
+
+
 
     correlazione32[:64] = 0
     return segnale_filtrato32, correlazione32, picchi32, distanze32, bits32
@@ -100,9 +198,9 @@ def analizza_con_buffer_scorrevole(percorso_file, status_label):
     segnale_filtrato32, correlazione32, picchi32, distanze32, bits32 = media_correlazione_32(segnale_32)
     status_label.config(text="Stato: Analisi ESP32 - Media, correlazione e decodifica completate")
 
-    print("Picchi:", picchi32)
-    print("Distanze:", distanze32)
-    print("Bit decodificati (bit, posizione):", bits32)
+    #print("Picchi:", picchi32)
+    #print("Distanze:", distanze32)
+    #print("Bit decodificati (bit, posizione):", bits32)
 
     visualizza_analisi_esp32(segnale_32, correlazione32, picchi32, bits32, campioni_per_bit)
 

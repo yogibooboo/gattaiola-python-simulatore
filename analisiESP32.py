@@ -224,7 +224,7 @@ def visualizza_analisi_esp32(segnale_32, correlazione32, picchi32, distanze32, b
 
     def sincronizza_assi_32(event):
         if event.inaxes == ax1_32:
-            ax2_32.set_xlim(ax1_32.get_xlim())
+            ax2_32.set_xlim(ax1_32.get_xlim())                                                                                    
         elif event.inaxes == ax2_32:
             ax1_32.set_xlim(ax2_32.get_xlim())
         fig32.canvas.draw_idle()

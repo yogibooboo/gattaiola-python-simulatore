@@ -22,7 +22,7 @@ def genera_nome_file(base_path="D:\\downloads", nome_base="adc_buffer", estensio
 # Funzione per acquisire dati dall'ESP32
 async def acquisisci_da_esp32(status_label, percorso_file_var):
     """Acquisisci i dati dall'ESP32 tramite WebSocket e li salva con un nome progressivo."""
-    uri = "ws://192.168.1.104/ws"  # URI del tuo ESP32
+    uri = "ws://192.168.1.105/ws"  # URI del tuo ESP32
     try:
         status_label.config(text="Stato: Connessione in corso...")
         async with websockets.connect(uri) as websocket:

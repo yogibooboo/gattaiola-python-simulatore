@@ -34,28 +34,23 @@ def genera_segnale_riferimento(sequenza_bit, debug_plot=False):
         for i, bit in enumerate(sequenza_bit):
             inizio = i * campioni_per_bit
             if i == 0:
-                # Primo bit: usa la polarità iniziale
                 current_polarita = polarita
             else:
-                # Transizione iniziale: inverti la polarità rispetto al livello finale del bit precedente
                 current_polarita = -ultima_polarita
             if bit == 1:
-                # Bit 1: livello costante per tutto il periodo
                 segnale[inizio:inizio + campioni_per_bit] = current_polarita
-                ultima_polarita = current_polarita  # Aggiorna la polarità finale
+                ultima_polarita = current_polarita
             else:
-                # Bit 0: livello costante per la prima metà, transizione a metà
                 segnale[inizio:inizio + campioni_per_bit // 2] = current_polarita
                 segnale[inizio + campioni_per_bit // 2:inizio + campioni_per_bit] = -current_polarita
-                ultima_polarita = -current_polarita  # Aggiorna la polarità finale
-        # Commentiamo la normalizzazione per verificare le transizioni
+                ultima_polarita = -current_polarita
         # segnale = segnale / np.linalg.norm(segnale) if np.linalg.norm(segnale) != 0 else segnale
         print(f"Debug: Lunghezza segnale riferimento: {len(segnale)}")
         print(f"Debug: Primi 100 campioni riferimento: {segnale[:100]}")
         if debug_plot:
             plt.figure()
             plt.plot(segnale, label="Segnale di Riferimento")
-            plt.title("Segnale di R personally(BMC, 32 campioni/bit)")
+            plt.title("Segnale di Riferimento (BMC, 32 campioni/bit)")
             for i in range(0, len(segnale), campioni_per_bit):
                 plt.axvline(i, color='black', linestyle='--', linewidth=0.5)
                 plt.axvline(i + campioni_per_bit // 2, color='gray', linestyle=':', linewidth=0.3)
@@ -91,49 +86,6 @@ def correlazione_con_sequenza_nota(percorso_file, bytes_noti, status_label, ax1,
         bits = genera_sequenza_bit(bytes_noti)
         riferimento = genera_segnale_riferimento(bits, debug_plot=False)
 
-        print("Debug: Confronto segnale filtrato e riferimento vicino a 774...")
-        inizio = 774 - 50
-        fine = 774 + 3232 + 50
-        if inizio >= 0 and fine < len(segnale):
-            segmento_segnale = segnale[inizio:fine]
-            segmento_segnale = segmento_segnale / np.linalg.norm(segmento_segnale) if np.linalg.norm(segmento_segnale) != 0 else segmento_segnale
-            correlazione_segmento = np.correlate(segmento_segnale, riferimento, mode='valid')
-            print(f"Debug: Correlazione segmento, max: {np.max(np.abs(correlazione_segmento)):.3f}")
-
-            # Creazione della finestra di confronto
-            if _confronto_window is None or not _confronto_window.winfo_exists():
-                _confronto_window = tk.Toplevel()
-                _confronto_window.title("Confronto Segnale e Riferimento")
-                frame = tk.Frame(_confronto_window)
-                frame.pack(fill=tk.BOTH, expand=True)
-
-                fig_confronto, ax_confronto = plt.subplots(figsize=(12, 6))
-                ax_confronto.plot(segmento_segnale, label="Segnale di ingresso (vicino a 774)", alpha=0.7)
-                ax_confronto.plot(riferimento, label="Segnale di riferimento", alpha=0.7)
-                # Aggiungi linee verticali per i confini dei bit e mezze transizioni
-                for i in range(0, len(riferimento), 32):
-                    ax_confronto.axvline(i, color='black', linestyle='--', linewidth=0.5)
-                    ax_confronto.axvline(i + 16, color='gray', linestyle=':', linewidth=0.3)
-                ax_confronto.set_title("Confronto Segnale di Ingresso e Riferimento")
-                ax_confronto.legend()
-
-                canvas = FigureCanvasTkAgg(fig_confronto, master=frame)
-                canvas.draw()
-                canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
-
-                toolbar = NavigationToolbar2Tk(canvas, frame)
-                toolbar.update()
-                canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
-
-                # Gestisci la chiusura della finestra
-                _confronto_window.protocol("WM_DELETE_WINDOW", lambda: _confronto_window.destroy())
-                print("Debug: Finestra di confronto creata")
-            else:
-                print("Debug: Finestra di confronto già esistente")
-            print("Debug: Confronto completato, proseguo con correlazione completa...")
-        else:
-            print("Debug: Finestra non valida per il confronto")
-
         print("Debug: Calcolo correlazione...")
         correlazione = np.correlate(segnale, riferimento, mode='full')
         norm = np.sqrt(np.sum(segnale**2) * np.sum(riferimento**2))
@@ -148,11 +100,55 @@ def correlazione_con_sequenza_nota(percorso_file, bytes_noti, status_label, ax1,
 
         risultati = []
         for idx in picchi_pos:
-            risultati.append((correlazione[idx], idx // 32))
+            risultati.append((correlazione[idx], idx, idx // 32))
         for idx in picchi_neg:
-            risultati.append((-correlazione[idx], idx // 32))
+            risultati.append((-correlazione[idx], idx, idx // 32))
         risultati.sort(key=lambda x: abs(x[0]), reverse=True)
         print(f"Debug: Totale picchi trovati: {len(risultati)}")
+
+        # Determina il massimo picco per il grafico di confronto
+        idx_max = risultati[0][1] if risultati else 774  # Fallback a 774 se nessun picco
+        print(f"Debug: Massimo picco al campione {idx_max} (bit {idx_max // 32})")
+
+        print(f"Debug: Confronto segnale filtrato e riferimento vicino a {idx_max}...")
+        inizio = idx_max - 50
+        fine = idx_max + 3232 + 50
+        if inizio >= 0 and fine < len(segnale):
+            segmento_segnale = segnale[inizio:fine]
+            segmento_segnale = segmento_segnale / np.linalg.norm(segmento_segnale) if np.linalg.norm(segmento_segnale) != 0 else segmento_segnale
+            correlazione_segmento = np.correlate(segmento_segnale, riferimento, mode='valid')
+            print(f"Debug: Correlazione segmento, max: {np.max(np.abs(correlazione_segmento)):.3f}")
+
+            if _confronto_window is None or not _confronto_window.winfo_exists():
+                _confronto_window = tk.Toplevel()
+                _confronto_window.title(f"Confronto Segnale e Riferimento (campione {idx_max})")
+                frame = tk.Frame(_confronto_window)
+                frame.pack(fill=tk.BOTH, expand=True)
+
+                fig_confronto, ax_confronto = plt.subplots(figsize=(12, 6))
+                ax_confronto.plot(segmento_segnale, label=f"Segnale di ingresso (vicino a {idx_max})", alpha=0.7)
+                ax_confronto.plot(riferimento, label="Segnale di riferimento", alpha=0.7)
+                for i in range(0, len(riferimento), 32):
+                    ax_confronto.axvline(i, color='black', linestyle='--', linewidth=0.5)
+                    ax_confronto.axvline(i + 16, color='gray', linestyle=':', linewidth=0.3)
+                ax_confronto.set_title(f"Confronto Segnale di Ingresso e Riferimento (campione {idx_max})")
+                ax_confronto.legend()
+
+                canvas = FigureCanvasTkAgg(fig_confronto, master=frame)
+                canvas.draw()
+                canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+
+                toolbar = NavigationToolbar2Tk(canvas, frame)
+                toolbar.update()
+                canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+
+                _confronto_window.protocol("WM_DELETE_WINDOW", lambda: _confronto_window.destroy())
+                print("Debug: Finestra di confronto creata")
+            else:
+                print("Debug: Finestra di confronto già esistente")
+            print("Debug: Confronto completato, proseguo con correlazione completa...")
+        else:
+            print(f"Debug: Finestra non valida per il confronto (inizio: {inizio}, fine: {fine})")
 
         print("Debug: Aggiornamento risultato_text...")
         risultato_text.delete(1.0, tk.END)
@@ -160,8 +156,8 @@ def correlazione_con_sequenza_nota(percorso_file, bytes_noti, status_label, ax1,
             max_conf = abs(risultati[0][0])
             risultato_text.insert(tk.END, f"Confidenza massima: {max_conf:.3f}\n")
             risultato_text.insert(tk.END, "Corrispondenze trovate:\n")
-            for conf, bit in risultati:
-                risultato_text.insert(tk.END, f"Confidenza {conf:.3f} al bit {bit}\n")
+            for conf, idx, bit in risultati:
+                risultato_text.insert(tk.END, f"Confidenza {conf:.3f} al bit {bit} (campione {idx})\n")
         else:
             risultato_text.insert(tk.END, f"Nessuna corrispondenza sopra la soglia {soglia}\n")
             risultato_text.insert(tk.END, f"Valore massimo correlazione: {np.max(np.abs(correlazione)):.3f}\n")
@@ -173,7 +169,7 @@ def correlazione_con_sequenza_nota(percorso_file, bytes_noti, status_label, ax1,
         for idx in picchi_pos:
             ax2.plot(idx, correlazione[idx], 'kx', label='Picco positivo' if idx == picchi_pos[0] else "", markersize=10)
         for idx in picchi_neg:
-            ax2.plot(idx, -correlazione[idx], 'kx', label='Picco negativo' if idx == picchi_neg[0] else "", markersize=10)
+            ax2.plot(idx, correlazione[idx], 'kx', label='Picco negativo' if idx == picchi_neg[0] else "", markersize=10)
         ax2.axhline(soglia, color='g', linestyle='--', label='Soglia positiva')
         ax2.axhline(-soglia, color='g', linestyle='--', label='Soglia negativa')
         ax2.set_ylabel('Correlazione')

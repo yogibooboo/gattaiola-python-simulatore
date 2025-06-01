@@ -19,22 +19,42 @@ def genera_nome_file(base_path="D:\\downloads", nome_base="adc_buffer", estensio
         indice += 1
     return file_path
 
-# Funzione per acquisire dati dall'ESP32
+import websockets
+import asyncio
+
 async def acquisisci_da_esp32(status_label, percorso_file_var):
     """Acquisisci i dati dall'ESP32 tramite WebSocket e li salva con un nome progressivo."""
-    uri = "ws://192.168.1.105/ws"  # URI del tuo ESP32
+    uri = "ws://192.168.1.105/ws"
     try:
         status_label.config(text="Stato: Connessione in corso...")
         async with websockets.connect(uri) as websocket:
             status_label.config(text="Stato: Connesso")
             await websocket.send("get_buffer")
             status_label.config(text="Stato: Download in corso...")
-            blob = await websocket.recv()
-            download_path = genera_nome_file()
-            with open(download_path, "wb") as f:
-                f.write(blob)
-            percorso_file_var.set(download_path)
-            status_label.config(text=f"Stato: Buffer ricevuto e salvato in {download_path}")
+            
+            # Ciclo per ricevere messaggi fino a ottenere il buffer binario
+            while True:
+                try:
+                    # Aspetta un messaggio con timeout di 5 secondi
+                    blob = await asyncio.wait_for(websocket.recv(), timeout=5.0)
+                    if isinstance(blob, str):
+                        # Ignora messaggi testuali (es. log JSON o "buffer_sent")
+                        status_label.config(text=f"Stato: Ignorato messaggio testuale: {blob[:50]}...")
+                        continue
+                    # Messaggio binario ricevuto
+                    download_path = genera_nome_file()
+                    with open(download_path, "wb") as f:
+                        f.write(blob)
+                    percorso_file_var.set(download_path)
+                    status_label.config(text=f"Stato: Buffer ricevuto e salvato in {download_path}")
+                    break  # Esci dal ciclo dopo aver salvato il buffer
+                except asyncio.TimeoutError:
+                    status_label.config(text="Errore: Timeout in attesa del buffer binario")
+                    return
+                except websockets.exceptions.ConnectionClosed:
+                    status_label.config(text="Errore: Connessione chiusa inaspettatamente")
+                    return
+
     except Exception as e:
         status_label.config(text=f"Errore: {e}")
 

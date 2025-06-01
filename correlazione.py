@@ -3,8 +3,12 @@ from scipy.signal import find_peaks
 import struct
 import matplotlib.pyplot as plt
 import tkinter as tk
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 
 BYTES_NOTI = [0x54, 0xDD, 0x25, 0x3C, 0x3D, 0xE1, 0x01, 0x80, 0x1C, 0xC9]
+
+# Variabile globale per tracciare la finestra di confronto
+_confronto_window = None
 
 def genera_sequenza_bit(bytes_noti):
     print("Debug: Generazione sequenza bit...")
@@ -15,6 +19,7 @@ def genera_sequenza_bit(bytes_noti):
                 bits.append((byte >> i) & 1)
             bits.append(1)
         print(f"Debug: Lunghezza sequenza bit: {len(bits)}")
+        print(f"Debug: Primi 20 bit: {bits[:20]}")
         return bits
     except Exception as e:
         print(f"Debug: Errore in genera_sequenza_bit: {e}")
@@ -25,22 +30,35 @@ def genera_segnale_riferimento(sequenza_bit, debug_plot=False):
     try:
         campioni_per_bit = 32
         segnale = np.zeros(len(sequenza_bit) * campioni_per_bit)
-        polarita = 1
+        polarita = 1  # Polarità iniziale
         for i, bit in enumerate(sequenza_bit):
             inizio = i * campioni_per_bit
-            polarita = -polarita
-            if bit == 1:
-                segnale[inizio:inizio + campioni_per_bit] = polarita
+            if i == 0:
+                # Primo bit: usa la polarità iniziale
+                current_polarita = polarita
             else:
-                segnale[inizio:inizio + campioni_per_bit // 2] = polarita
-                segnale[inizio + campioni_per_bit // 2:inizio + campioni_per_bit] = -polarita
-        segnale = segnale / np.linalg.norm(segnale) if np.linalg.norm(segnale) != 0 else segnale
+                # Transizione iniziale: inverti la polarità rispetto al livello finale del bit precedente
+                current_polarita = -ultima_polarita
+            if bit == 1:
+                # Bit 1: livello costante per tutto il periodo
+                segnale[inizio:inizio + campioni_per_bit] = current_polarita
+                ultima_polarita = current_polarita  # Aggiorna la polarità finale
+            else:
+                # Bit 0: livello costante per la prima metà, transizione a metà
+                segnale[inizio:inizio + campioni_per_bit // 2] = current_polarita
+                segnale[inizio + campioni_per_bit // 2:inizio + campioni_per_bit] = -current_polarita
+                ultima_polarita = -current_polarita  # Aggiorna la polarità finale
+        # Commentiamo la normalizzazione per verificare le transizioni
+        # segnale = segnale / np.linalg.norm(segnale) if np.linalg.norm(segnale) != 0 else segnale
         print(f"Debug: Lunghezza segnale riferimento: {len(segnale)}")
-        print(f"Debug: Primi 50 campioni riferimento: {segnale[:50]}")
+        print(f"Debug: Primi 100 campioni riferimento: {segnale[:100]}")
         if debug_plot:
             plt.figure()
             plt.plot(segnale, label="Segnale di Riferimento")
-            plt.title("Segnale di Riferimento (BMC, 32 campioni/bit)")
+            plt.title("Segnale di R personally(BMC, 32 campioni/bit)")
+            for i in range(0, len(segnale), campioni_per_bit):
+                plt.axvline(i, color='black', linestyle='--', linewidth=0.5)
+                plt.axvline(i + campioni_per_bit // 2, color='gray', linestyle=':', linewidth=0.3)
             plt.legend()
             plt.show()
         return segnale
@@ -49,6 +67,7 @@ def genera_segnale_riferimento(sequenza_bit, debug_plot=False):
         raise
 
 def correlazione_con_sequenza_nota(percorso_file, bytes_noti, status_label, ax1, risultato_text, segnale_filtrato=None):
+    global _confronto_window
     print("Debug: Inizio funzione correlazione_con_sequenza_nota...")
     try:
         status_label.config(text="Stato: Correlazione in corso...")
@@ -73,13 +92,44 @@ def correlazione_con_sequenza_nota(percorso_file, bytes_noti, status_label, ax1,
         riferimento = genera_segnale_riferimento(bits, debug_plot=False)
 
         print("Debug: Confronto segnale filtrato e riferimento vicino a 774...")
-        inizio = 774 - 50  # Allineato alla sincronizzazione corretta
+        inizio = 774 - 50
         fine = 774 + 3232 + 50
         if inizio >= 0 and fine < len(segnale):
             segmento_segnale = segnale[inizio:fine]
             segmento_segnale = segmento_segnale / np.linalg.norm(segmento_segnale) if np.linalg.norm(segmento_segnale) != 0 else segmento_segnale
             correlazione_segmento = np.correlate(segmento_segnale, riferimento, mode='valid')
             print(f"Debug: Correlazione segmento, max: {np.max(np.abs(correlazione_segmento)):.3f}")
+
+            # Creazione della finestra di confronto
+            if _confronto_window is None or not _confronto_window.winfo_exists():
+                _confronto_window = tk.Toplevel()
+                _confronto_window.title("Confronto Segnale e Riferimento")
+                frame = tk.Frame(_confronto_window)
+                frame.pack(fill=tk.BOTH, expand=True)
+
+                fig_confronto, ax_confronto = plt.subplots(figsize=(12, 6))
+                ax_confronto.plot(segmento_segnale, label="Segnale di ingresso (vicino a 774)", alpha=0.7)
+                ax_confronto.plot(riferimento, label="Segnale di riferimento", alpha=0.7)
+                # Aggiungi linee verticali per i confini dei bit e mezze transizioni
+                for i in range(0, len(riferimento), 32):
+                    ax_confronto.axvline(i, color='black', linestyle='--', linewidth=0.5)
+                    ax_confronto.axvline(i + 16, color='gray', linestyle=':', linewidth=0.3)
+                ax_confronto.set_title("Confronto Segnale di Ingresso e Riferimento")
+                ax_confronto.legend()
+
+                canvas = FigureCanvasTkAgg(fig_confronto, master=frame)
+                canvas.draw()
+                canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+
+                toolbar = NavigationToolbar2Tk(canvas, frame)
+                toolbar.update()
+                canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+
+                # Gestisci la chiusura della finestra
+                _confronto_window.protocol("WM_DELETE_WINDOW", lambda: _confronto_window.destroy())
+                print("Debug: Finestra di confronto creata")
+            else:
+                print("Debug: Finestra di confronto già esistente")
             print("Debug: Confronto completato, proseguo con correlazione completa...")
         else:
             print("Debug: Finestra non valida per il confronto")

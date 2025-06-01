@@ -72,21 +72,15 @@ def correlazione_con_sequenza_nota(percorso_file, bytes_noti, status_label, ax1,
         bits = genera_sequenza_bit(bytes_noti)
         riferimento = genera_segnale_riferimento(bits, debug_plot=False)
 
-        print("Debug: Confronto segnale filtrato e riferimento vicino a 798...")
-        inizio = 798 - 50
-        fine = 798 + 3232 + 50
+        print("Debug: Confronto segnale filtrato e riferimento vicino a 774...")
+        inizio = 774 - 50  # Allineato alla sincronizzazione corretta
+        fine = 774 + 3232 + 50
         if inizio >= 0 and fine < len(segnale):
             segmento_segnale = segnale[inizio:fine]
             segmento_segnale = segmento_segnale / np.linalg.norm(segmento_segnale) if np.linalg.norm(segmento_segnale) != 0 else segmento_segnale
             correlazione_segmento = np.correlate(segmento_segnale, riferimento, mode='valid')
             print(f"Debug: Correlazione segmento, max: {np.max(np.abs(correlazione_segmento)):.3f}")
-            # Plot di confronto
-            plt.figure(figsize=(12, 6))
-            plt.plot(segmento_segnale, label="Segnale di ingresso (vicino a 798)", alpha=0.7)
-            plt.plot(riferimento, label="Segnale di riferimento", alpha=0.7)
-            plt.title("Confronto Segnale di Ingresso e Riferimento")
-            plt.legend()
-            plt.show()
+            print("Debug: Confronto completato, proseguo con correlazione completa...")
         else:
             print("Debug: Finestra non valida per il confronto")
 

@@ -1,9 +1,12 @@
 import tkinter as tk
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import struct
 
 def media_correlazione_32(segnale, larghezza_finestra=8, lunghezza_correlazione=32, log_widget=None):
+    # Codice invariato (lo stesso della versione precedente)
+    # ... (includi tutto il codice originale di media_correlazione_32)
     N = len(segnale)
     segnale_32 = np.array(segnale, dtype=np.int32)
     segnale_filtrato32 = np.zeros(N, dtype=np.int32)
@@ -27,7 +30,7 @@ def media_correlazione_32(segnale, larghezza_finestra=8, lunghezza_correlazione=
     def log_message(message):
         if log_widget:
             log_widget.insert(tk.END, message + "\n")
-            log_widget.see(tk.END)  # Scorri automaticamente verso il basso
+            log_widget.see(tk.END)
         else:
             print(message)
 
@@ -58,11 +61,11 @@ def media_correlazione_32(segnale, larghezza_finestra=8, lunghezza_correlazione=
         segnale_filtrato32[i] = segnale_filtrato32[i-1] - (segnale_32[i-4] // larghezza_finestra) + (segnale_32[i+3] // larghezza_finestra)
         correlazione32[i-16] = correlazione32[i-17] - segnale_filtrato32[i-32] + 2 * segnale_filtrato32[i-16] - segnale_filtrato32[i]
 
-        newbit = 2  # Se trovo un nuovo bit diventa 0 o 1
+        newbit = 2
         numbit = 0
         newpeak = False
 
-        if stato == 1:  # Cerchiamo un picco massimo
+        if stato == 1:
             max_i = max(correlazione32[i-16], max_i)
             max_i8 = max(correlazione32[i-24], max_i8)
             if max_i == max_i8:
@@ -71,7 +74,7 @@ def media_correlazione_32(segnale, larghezza_finestra=8, lunghezza_correlazione=
                 min_i = correlazione32[i-16]
                 min_i8 = correlazione32[i-24]
                 newpeak = True
-        else:  # Cerchiamo un picco minimo
+        else:
             min_i = min(correlazione32[i-16], min_i)
             min_i8 = min(correlazione32[i-24], min_i8)
             if min_i == min_i8:
@@ -98,7 +101,7 @@ def media_correlazione_32(segnale, larghezza_finestra=8, lunghezza_correlazione=
                     newbit = 0
                     numbit = 1
                 else:
-                    bits32.append((1, i-24-nuova_distanza))  # Si suppone che erano due uni
+                    bits32.append((1, i-24-nuova_distanza))
                     bits32.append((1, i-24))
                     newbit = 1
                     numbit = 2
@@ -106,7 +109,7 @@ def media_correlazione_32(segnale, larghezza_finestra=8, lunghezza_correlazione=
 
         while numbit > 0:
             match stato_decobytes:
-                case 0:  # Cerca il primo 1 dopo almeno 10 consecutivi
+                case 0:
                     if newbit == 0:
                         contatore_zeri += 1
                     else:
@@ -118,7 +121,7 @@ def media_correlazione_32(segnale, larghezza_finestra=8, lunghezza_correlazione=
                             log_message(f"Sequenza sync at: {i}")
                         contatore_zeri = 0
 
-                case 1:  # Fase di decodifica bytes
+                case 1:
                     if contatore_bits < 8:
                         bytes32[contatore_bytes] >>= 1
                         if newbit == 1:
@@ -135,7 +138,6 @@ def media_correlazione_32(segnale, larghezza_finestra=8, lunghezza_correlazione=
                                 contatore_bytes = 0
                                 stato_decobytes = 0
 
-                                # Calcolo CRC
                                 crc = 0x0
                                 polynomial = 0x1021
                                 for byte in bytes32:
@@ -149,7 +151,6 @@ def media_correlazione_32(segnale, larghezza_finestra=8, lunghezza_correlazione=
                                     crc &= 0xffff
                                 if crc == 0:
                                     log_message("CRC OK")
-                                    # Calcolo di country_code e device_code
                                     country_code = (bytes32[5] << 2) | (bytes32[4] >> 6)
                                     device_code = (bytes32[4] & 0x3F) << 32 | (bytes32[3] << 24) | \
                                                   (bytes32[2] << 16) | (bytes32[1] << 8) | bytes32[0]
@@ -168,6 +169,7 @@ def media_correlazione_32(segnale, larghezza_finestra=8, lunghezza_correlazione=
     return segnale_filtrato32, correlazione32, picchi32, distanze32, bits32, bytes32
 
 def analizza_con_buffer_scorrevole(percorso_file, status_label):
+    print("Debug: Inizio analizza_con_buffer_scorrevole...")
     periodo_campionamento = 1 / 134.2e3 * 1e6
     durata_bit = 1 / (134.2e3 / 32) * 1e6
     campioni_per_bit = int(durata_bit / periodo_campionamento)
@@ -175,16 +177,26 @@ def analizza_con_buffer_scorrevole(percorso_file, status_label):
     with open(percorso_file, "rb") as f:
         dati = f.read()
     segnale_32 = np.array(struct.unpack("<" + "h" * (len(dati) // 2), dati), dtype=np.int32)
+    print(f"Debug: Segnale letto, lunghezza: {len(segnale_32)}")
 
     segnale_filtrato32, correlazione32, picchi32, distanze32, bits32, bytes32 = media_correlazione_32(segnale_32, log_widget=None)
     status_label.config(text="Stato: Analisi ESP32 - Media, correlazione e decodifica completate")
+    print(f"Debug: Segnale filtrato restituito, lunghezza: {len(segnale_filtrato32)}")
 
     visualizza_analisi_esp32(segnale_32, correlazione32, picchi32, distanze32, bits32, bytes32, campioni_per_bit)
 
-    return []
+    print("Debug: Fine analizza_con_buffer_scorrevole")
+    return segnale_filtrato32
+
+
+
+# Variabile globale per memorizzare ax1_32
+_ax1_32 = None
 
 def visualizza_analisi_esp32(segnale_32, correlazione32, picchi32, distanze32, bits32, bytes32, campioni_per_bit):
-    window32 = tk.Tk()
+    global _ax1_32
+    print("Debug: Inizio visualizza_analisi_esp32...")
+    window32 = tk.Toplevel()
     window32.title("Analisi ESP32")
 
     frame = tk.Frame(window32)
@@ -230,14 +242,15 @@ def visualizza_analisi_esp32(segnale_32, correlazione32, picchi32, distanze32, b
         fig32.canvas.draw_idle()
 
     fig32.canvas.mpl_connect('motion_notify_event', sincronizza_assi_32)
-    fig32.canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+    
+    canvas = FigureCanvasTkAgg(fig32, master=frame)
+    canvas.draw()
+    canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+    
+    _ax1_32 = ax1_32  # Memorizza ax1_32
+    
+    print("Debug: Fine visualizza_analisi_esp32")
 
-    plt.show(block=False)
-    window32.mainloop()
-
-if __name__ == "__main__":
-    root = tk.Tk()
-    status_label = tk.Label(root, text="Stato: In attesa")
-    status_label.pack()
-    analizza_con_buffer_scorrevole("percorso_al_tuo_file.bin", status_label)
-    root.mainloop()
+def get_ax1_32():
+    """Restituisce l'asse ax1_32 dell'analisi ESP32."""
+    return _ax1_32

@@ -223,15 +223,38 @@ def analizza_file(percorso_file_var, status_label, bits_text):
 def esegui_correlazione(percorso_file_var, status_label, risultato_text, media_scorrevole_var):
     print("Debug: Inizio esecuzione correlazione...")
     try:
-        print("Debug: Chiamo analizza_file...")
+        percorso_file = percorso_file_var.get()
+        print(f"Debug: Percorso file: {percorso_file}")
+        if not percorso_file or not os.path.exists(percorso_file):
+            print("Debug: Errore: Nessun file selezionato o file non trovato")
+            status_label.config(text="Errore: Nessun file selezionato o file non trovato")
+            risultato_text.insert(tk.END, "Errore: Nessun file selezionato o file non trovato\n")
+            return
+
+        # Esegui analizza_file per inizializzare _ax1_32, anche se la media scorrevole è disabilitata
+        print("Debug: Chiamo analizza_file per inizializzare la finestra...")
         segnale_filtrato = analizza_file(percorso_file_var, status_label, bits_text)
-        print(f"Debug: Analisi completata, segnale_filtrato: {segnale_filtrato is not None}, lunghezza: {len(segnale_filtrato) if segnale_filtrato is not None else 'None'}")
-        print("Debug: Procedo con correlazione...")
+        if segnale_filtrato is None:
+            print("Debug: Errore: analizza_file ha restituito None")
+            status_label.config(text="Errore: Analisi ESP32 fallita")
+            return
+        print(f"Debug: Segnale filtrato generato da analizza_file, lunghezza: {len(segnale_filtrato)}")
+
+        # Se la media scorrevole è disabilitata, leggi il segnale grezzo
+        if not media_scorrevole_var.get():
+            print("Debug: Media scorrevole disabilitata, leggo segnale grezzo...")
+            with open(percorso_file, "rb") as f:
+                data = f.read()
+            segnale_filtrato = np.array(struct.unpack("<" + "h" * (len(data) // 2), data))
+            print(f"Debug: Segnale grezzo letto, lunghezza: {len(segnale_filtrato)}")
+
         ax1_32 = analisiESP32.get_ax1_32()
         if ax1_32 is None:
+            print("Debug: Errore: Finestra di analisi ESP32 non disponibile dopo analizza_file")
             status_label.config(text="Errore: Finestra di analisi ESP32 non disponibile")
             risultato_text.insert(tk.END, "Errore: Finestra di analisi ESP32 non disponibile\n")
             return
+
         try:
             print(f"Debug: Accesso a correlazione.BYTES_NOTI: {correlazione.BYTES_NOTI}")
         except AttributeError as e:
@@ -239,14 +262,15 @@ def esegui_correlazione(percorso_file_var, status_label, risultato_text, media_s
             status_label.config(text="Errore: BYTES_NOTI non trovato in correlazione")
             risultato_text.insert(tk.END, f"Errore: {e}\n")
             return
-        print("Debug: Forzo segnale grezzo...")
+
+        print("Debug: Eseguo correlazione_con_sequenza_nota...")
         correlazione.correlazione_con_sequenza_nota(
             percorso_file_var.get(),
             correlazione.BYTES_NOTI,
             status_label,
             ax1_32,
             risultato_text,
-            None
+            segnale_filtrato  # Passa il segnale filtrato o grezzo
         )
         print("Debug: Correlazione completata")
     except Exception as e:

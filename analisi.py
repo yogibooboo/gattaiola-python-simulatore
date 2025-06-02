@@ -219,7 +219,6 @@ def analizza_file(percorso_file_var, status_label, bits_text):
         status_label.config(text=f"Errore: Analisi ESP32 fallita: {e}")
         bits_text.insert(tk.END, f"Errore: {e}\n")
         return None
-
 def esegui_correlazione(percorso_file_var, status_label, risultato_text, media_scorrevole_var):
     print("Debug: Inizio esecuzione correlazione...")
     try:

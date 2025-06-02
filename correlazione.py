@@ -61,6 +61,21 @@ def genera_segnale_riferimento(sequenza_bit, debug_plot=False):
         print(f"Debug: Errore in genera_segnale_riferimento: {e}")
         raise
 
+import numpy as np
+import tkinter as tk
+from matplotlib.figure import Figure
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
+from scipy.signal import find_peaks
+import struct
+
+import numpy as np
+import tkinter as tk
+from matplotlib.figure import Figure
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
+from scipy.signal import find_peaks
+import struct
+import time
+
 def correlazione_con_sequenza_nota(percorso_file, bytes_noti, status_label, ax1, risultato_text, segnale_filtrato=None):
     global _confronto_window
     print("Debug: Inizio funzione correlazione_con_sequenza_nota...")
@@ -110,42 +125,100 @@ def correlazione_con_sequenza_nota(percorso_file, bytes_noti, status_label, ax1,
         idx_max = risultati[0][1] if risultati else 774  # Fallback a 774 se nessun picco
         print(f"Debug: Massimo picco al campione {idx_max} (bit {idx_max // 32})")
 
+        # Inizializza l'offset per il pan
+        offset = 0
+        lunghezza_riferimento = len(riferimento)  # 3232 campioni
         print(f"Debug: Confronto segnale filtrato e riferimento vicino a {idx_max}...")
-        inizio = idx_max - 50
-        fine = idx_max + 3232 + 50
+        inizio = max(0, idx_max - lunghezza_riferimento)  # Inizio a idx_max - 3232
+        fine = idx_max + 50
         if inizio >= 0 and fine < len(segnale):
             segmento_segnale = segnale[inizio:fine]
             segmento_segnale = segmento_segnale / np.linalg.norm(segmento_segnale) if np.linalg.norm(segmento_segnale) != 0 else segmento_segnale
-            correlazione_segmento = np.correlate(segmento_segnale, riferimento, mode='valid')
-            print(f"Debug: Correlazione segmento, max: {np.max(np.abs(correlazione_segmento)):.3f}")
+            print(f"Debug: Segmento segnale, lunghezza: {len(segmento_segnale)}")
 
+            # Crea la finestra di confronto
             if _confronto_window is None or not _confronto_window.winfo_exists():
                 _confronto_window = tk.Toplevel()
-                _confronto_window.title(f"Confronto Segnale e Riferimento (campione {idx_max})")
+                _confronto_window.title(f"Confronto Segnale e Riferimento (inizio: {inizio})")
                 frame = tk.Frame(_confronto_window)
                 frame.pack(fill=tk.BOTH, expand=True)
 
+                # Crea il grafico
                 fig_confronto, ax_confronto = plt.subplots(figsize=(12, 6))
-                ax_confronto.plot(segmento_segnale, label=f"Segnale di ingresso (vicino a {idx_max})", alpha=0.7)
-                ax_confronto.plot(riferimento, label="Segnale di riferimento", alpha=0.7)
-                for i in range(0, len(riferimento), 32):
-                    ax_confronto.axvline(i, color='black', linestyle='--', linewidth=0.5)
-                    ax_confronto.axvline(i + 16, color='gray', linestyle=':', linewidth=0.3)
-                ax_confronto.set_title(f"Confronto Segnale di Ingresso e Riferimento (campione {idx_max})")
-                ax_confronto.legend()
-
                 canvas = FigureCanvasTkAgg(fig_confronto, master=frame)
                 canvas.draw()
                 canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
 
+                # Aggiungi toolbar
                 toolbar = NavigationToolbar2Tk(canvas, frame)
                 toolbar.update()
                 canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+
+                # Aggiungi pulsanti per il pan
+                button_frame = tk.Frame(_confronto_window)
+                button_frame.pack(side=tk.BOTTOM, fill=tk.X)
+                tk.Button(button_frame, text="Sposta Sinistra", command=lambda: sposta_sinistra()).pack(side=tk.LEFT, padx=5, pady=5)
+                tk.Button(button_frame, text="Sposta Destra", command=lambda: sposta_destra()).pack(side=tk.LEFT, padx=5, pady=5)
 
                 _confronto_window.protocol("WM_DELETE_WINDOW", lambda: _confronto_window.destroy())
                 print("Debug: Finestra di confronto creata")
             else:
                 print("Debug: Finestra di confronto già esistente")
+                # Recupera il canvas esistente
+                for widget in _confronto_window.winfo_children():
+                    if isinstance(widget, tk.Frame):
+                        for child in widget.winfo_children():
+                            if isinstance(child, tk.Canvas):
+                                canvas = child.master  # Trova il FigureCanvasTkAgg
+                                fig_confronto = canvas.figure
+                                ax_confronto = fig_confronto.axes[0]
+                                break
+
+            # Funzione per aggiornare il grafico con l'offset corrente
+            def aggiorna_grafico(offset_attuale):
+                # Salva i limiti y correnti per mantenere lo zoom
+                ylim = ax_confronto.get_ylim() if ax_confronto.get_ylim() else (None, None)
+                
+                inizio_offset = max(0, idx_max - lunghezza_riferimento + offset_attuale)
+                fine_offset = inizio_offset + lunghezza_riferimento + 50
+                if fine_offset > len(segnale):
+                    fine_offset = len(segnale)
+                    inizio_offset = max(0, fine_offset - (lunghezza_riferimento + 50))
+                segmento_segnale_offset = segnale[inizio_offset:fine_offset]
+                segmento_segnale_offset = segmento_segnale_offset / np.linalg.norm(segmento_segnale_offset) if np.linalg.norm(segmento_segnale_offset) != 0 else segmento_segnale_offset
+
+                ax_confronto.clear()
+                # Plotta il segnale di ingresso con indici assoluti
+                indici_assoluti = np.arange(inizio_offset, fine_offset)
+                ax_confronto.plot(indici_assoluti, segmento_segnale_offset, label=f"Segnale di ingresso (offset: {offset_attuale})", alpha=0.7)
+                # Plotta il segnale di riferimento con gli stessi indici assoluti
+                ax_confronto.plot(indici_assoluti[:lunghezza_riferimento], riferimento, label="Segnale di riferimento", alpha=0.7)
+                for i in range(0, lunghezza_riferimento, 32):
+                    ax_confronto.axvline(inizio_offset + i, color='black', linestyle='--', linewidth=0.5)
+                    ax_confronto.axvline(inizio_offset + i + 16, color='gray', linestyle=':', linewidth=0.3)
+                ax_confronto.set_title(f"Confronto Segnale di Ingresso e Riferimento (inizio: {inizio_offset})")
+                ax_confronto.set_xlabel("Indici del segnale di ingresso")
+                ax_confronto.legend()
+                # Ripristina i limiti y per mantenere lo zoom
+                if ylim != (None, None):
+                    ax_confronto.set_ylim(ylim)
+                canvas.draw()
+
+            # Funzioni per i pulsanti di pan
+            def sposta_sinistra():
+                nonlocal offset
+                offset -= 1  # Sposta di -1 campione
+                print(f"Debug: Offset aggiornato: {offset}")
+                aggiorna_grafico(offset)
+
+            def sposta_destra():
+                nonlocal offset
+                offset += 1  # Sposta di +1 campione
+                print(f"Debug: Offset aggiornato: {offset}")
+                aggiorna_grafico(offset)
+
+            # Disegna il grafico iniziale
+            aggiorna_grafico(offset)
             print("Debug: Confronto completato, proseguo con correlazione completa...")
         else:
             print(f"Debug: Finestra non valida per il confronto (inizio: {inizio}, fine: {fine})")

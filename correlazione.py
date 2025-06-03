@@ -135,6 +135,7 @@ def correlazione_con_sequenza_nota(percorso_file, bytes_noti, status_label, ax1,
         xlim = (inizio, fine)  # Limiti x iniziali
         ylim = (-1.5, 1.5)     # Limiti y iniziali
         previous_offset = offset  # Traccia l'offset precedente
+        previous_idx_max = idx_max  # Traccia il valore precedente di idx_max
 
         if inizio >= 0 and fine < len(segnale):
             segmento_segnale = segnale[inizio:fine]
@@ -181,7 +182,7 @@ def correlazione_con_sequenza_nota(percorso_file, bytes_noti, status_label, ax1,
                                 break
 
             def aggiorna_grafico(offset_attuale):
-                nonlocal xlim, ylim, previous_offset, current_peak_idx, risultati, idx_max
+                nonlocal xlim, ylim, previous_offset, current_peak_idx, risultati, idx_max, previous_idx_max
 
                 # Salva i limiti correnti per catturare lo zoom manuale
                 current_xlim = ax_confronto.get_xlim()
@@ -212,14 +213,18 @@ def correlazione_con_sequenza_nota(percorso_file, bytes_noti, status_label, ax1,
                 ax_confronto.set_ylabel("Ampiezza")
                 ax_confronto.legend()
 
-                # MODIFICA: Aggiorna i limiti x in base a inizio_offset e fine_offset
-                # Calcola lo spostamento solo se c'è uno zoom manuale
-                if current_xlim != (0, 1) and current_xlim != (inizio - (offset_attuale - previous_offset), fine - (offset_attuale - previous_offset)):
-                    lunghezza_zoom = current_xlim[1] - current_xlim[0]
-                    shift = offset_attuale - previous_offset
-                    new_xlim = (current_xlim[0] + shift, current_xlim[0] + shift + lunghezza_zoom)
-                else:
+                # MODIFICA: Gestione dei limiti x
+                # Se idx_max è cambiato o è stato impostato un nuovo inizio_offset, resetta i limiti x
+                if idx_max != previous_idx_max:
                     new_xlim = (inizio_offset, fine_offset)
+                else:
+                    # Se idx_max non è cambiato, mantieni lo zoom manuale se presente
+                    if current_xlim != (0, 1) and current_xlim != (inizio_offset - (offset_attuale - previous_offset), fine_offset - (offset_attuale - previous_offset)):
+                        lunghezza_zoom = current_xlim[1] - current_xlim[0]
+                        shift = offset_attuale - previous_offset
+                        new_xlim = (current_xlim[0] + shift, current_xlim[0] + shift + lunghezza_zoom)
+                    else:
+                        new_xlim = (inizio_offset, fine_offset)
 
                 # Assicurati che i nuovi limiti siano validi
                 if new_xlim[0] >= 0 and new_xlim[1] <= len(segnale):
@@ -234,6 +239,7 @@ def correlazione_con_sequenza_nota(percorso_file, bytes_noti, status_label, ax1,
                 xlim = ax_confronto.get_xlim()
                 ylim = ax_confronto.get_ylim()
                 previous_offset = offset_attuale  # Aggiorna l'offset precedente
+                previous_idx_max = idx_max  # Aggiorna il valore precedente di idx_max
 
                 print(f"Debug: Limiti y: {ax_confronto.get_ylim()}")
                 print(f"Debug: Limiti x: {ax_confronto.get_xlim()}")
@@ -259,7 +265,7 @@ def correlazione_con_sequenza_nota(percorso_file, bytes_noti, status_label, ax1,
                     print(f"Debug: Picco precedente selezionato, idx_max={idx_max}, current_peak_idx={current_peak_idx}")
                     # Resetta l'offset per allineare il nuovo picco
                     offset = 0
-                    previous_offset = 0  # MODIFICA: Resetta anche previous_offset
+                    previous_offset = 0
                     aggiorna_grafico(offset)
                 else:
                     print("Debug: Nessun picco precedente disponibile")
@@ -272,19 +278,21 @@ def correlazione_con_sequenza_nota(percorso_file, bytes_noti, status_label, ax1,
                     print(f"Debug: Picco successivo selezionato, idx_max={idx_max}, current_peak_idx={current_peak_idx}")
                     # Resetta l'offset per allineare il nuovo picco
                     offset = 0
-                    previous_offset = 0  # MODIFICA: Resetta anche previous_offset
+                    previous_offset = 0
                     aggiorna_grafico(offset)
                 else:
                     print("Debug: Nessun picco successivo disponibile")
 
             def imposta_inizio(valore):
-                nonlocal offset, idx_max, previous_offset
+                nonlocal offset, idx_max, previous_offset, previous_idx_max
                 try:
                     nuovo_inizio = int(valore)
                     if nuovo_inizio >= 0 and nuovo_inizio <= len(segnale) - lunghezza_riferimento:
                         # Calcola il nuovo offset in base al nuovo inizio
                         offset = nuovo_inizio - (idx_max - lunghezza_riferimento)
-                        previous_offset = offset  # MODIFICA: Sincronizza previous_offset
+                        previous_offset = offset  # Sincronizza previous_offset
+                        # Simula un cambio di idx_max per forzare il reset dei limiti x
+                        previous_idx_max = idx_max - 1  # Forza un valore diverso per resettare i limiti
                         print(f"Debug: Campione iniziale impostato a {nuovo_inizio}, nuovo offset={offset}")
                         aggiorna_grafico(offset)
                     else:

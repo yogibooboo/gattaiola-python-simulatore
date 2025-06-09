@@ -139,7 +139,7 @@ def media_correlazione_32(segnale, larghezza_finestra=8, lunghezza_correlazione=
                                 crc <<= 1
                                 if c15 ^ bit:
                                     crc ^= polynomial
-                            crc &= 0xffff  # Correzione: rimosso "Unito"
+                            crc &= 0xffff
                         crc_reversed = 0
                         for j in range(16):
                             if (crc >> j) & 1:
@@ -196,15 +196,15 @@ def visualizza_analisi_esp32(segnale, correlazione32, picchi32, distanze32, bits
     frame = tk.Frame(window32)
     frame.pack(fill=tk.BOTH, expand=True)
 
-    # Frame per il titolo e i radiobutton
-    title_frame = tk.Frame(frame)
-    title_frame.pack(side=tk.TOP, fill=tk.X, padx=5, pady=5)
-
     # Variabile per i radiobutton
     mostra_segnale_var = tk.IntVar(value=0)  # 0 = Grezzo, 1 = Filtrato, 2 = Entrambi
 
     # Funzione per aggiornare il grafico
     def aggiorna_grafico_segnale():
+        # Salva i limiti attuali degli assi per mantenere lo zoom
+        xlim = ax1_32.get_xlim()
+        ylim = ax1_32.get_ylim()
+        
         ax1_32.clear()
         scelta = mostra_segnale_var.get()
         
@@ -223,19 +223,31 @@ def visualizza_analisi_esp32(segnale, correlazione32, picchi32, distanze32, bits
             ax1_32.axvline(i + campioni_per_bit // 2, color='gray', linestyle='--', linewidth=0.5)
         
         ax1_32.set_title('Segnale di Ingresso')
-        ax1_32.set_xlabel("Campioni")
+        ax1_32.set_xlabel("Campioni", loc='left')  # Etichetta a sinistra
         ax1_32.set_ylabel("Ampiezza")
         ax1_32.legend()
+        
+        # Ripristina i limiti degli assi
+        ax1_32.set_xlim(xlim)
+        ax1_32.set_ylim(ylim)
+        
         fig32.canvas.draw()
 
-    # Aggiungi titolo e radiobutton
-    tk.Label(title_frame, text="Segnale di Ingresso").pack(side=tk.LEFT, padx=5)
-    tk.Radiobutton(title_frame, text="Grezzo", variable=mostra_segnale_var, value=0, command=aggiorna_grafico_segnale).pack(side=tk.LEFT, padx=5)
-    tk.Radiobutton(title_frame, text="Filtrato", variable=mostra_segnale_var, value=1, command=aggiorna_grafico_segnale).pack(side=tk.LEFT, padx=5)
-    tk.Radiobutton(title_frame, text="Entrambi", variable=mostra_segnale_var, value=2, command=aggiorna_grafico_segnale).pack(side=tk.LEFT, padx=5)
-
     fig32, (ax1_32, ax2_32) = plt.subplots(2, 1, figsize=(10, 6))
-    plt.tight_layout()
+    plt.tight_layout(pad=2.0)  # Aumenta il padding per evitare sovrapposizioni
+
+    # Aggiungi radiobutton direttamente sopra il grafico
+    canvas = FigureCanvasTkAgg(fig32, master=frame)
+    canvas.draw()
+    canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+
+    # Frame per i radiobutton, integrato sopra il canvas
+    radio_frame = tk.Frame(frame)
+    radio_frame.pack(side=tk.TOP, fill=tk.X, padx=5, pady=2)
+    tk.Label(radio_frame, text="Segnale di Ingresso", font=("Arial", 10, "bold")).pack(side=tk.LEFT, padx=5)
+    tk.Radiobutton(radio_frame, text="Grezzo", variable=mostra_segnale_var, value=0, command=aggiorna_grafico_segnale).pack(side=tk.LEFT, padx=5)
+    tk.Radiobutton(radio_frame, text="Filtrato", variable=mostra_segnale_var, value=1, command=aggiorna_grafico_segnale).pack(side=tk.LEFT, padx=5)
+    tk.Radiobutton(radio_frame, text="Entrambi", variable=mostra_segnale_var, value=2, command=aggiorna_grafico_segnale).pack(side=tk.LEFT, padx=5)
 
     # Plotta il segnale iniziale (default: grezzo)
     ax1_32.plot(segnale, label="Segnale Grezzo", color='blue', alpha=0.8)
@@ -243,7 +255,7 @@ def visualizza_analisi_esp32(segnale, correlazione32, picchi32, distanze32, bits
         ax1_32.axvline(i, color='black', linestyle='-', linewidth=0.8)
         ax1_32.axvline(i + campioni_per_bit // 2, color='gray', linestyle='--', linewidth=0.5)
     ax1_32.set_title('Segnale di Ingresso')
-    ax1_32.set_xlabel("Campioni")
+    ax1_32.set_xlabel("Campioni", loc='left')  # Etichetta a sinistra
     ax1_32.set_ylabel("Ampiezza")
     ax1_32.legend()
 
@@ -259,6 +271,8 @@ def visualizza_analisi_esp32(segnale, correlazione32, picchi32, distanze32, bits
         ax2_32.axvline(i, color='black', linestyle='-', linewidth=0.8)
         ax2_32.axvline(i + campioni_per_bit // 2, color='gray', linestyle='--', linewidth=0.5)
     ax2_32.set_title('Correlazione con Bit')
+    ax2_32.set_xlabel("Campioni", loc='left')  # Etichetta a sinistra
+    ax2_32.set_ylabel("Correlazione")
     ax2_32.legend()
 
     def sincronizza_assi_32(event):
@@ -269,10 +283,6 @@ def visualizza_analisi_esp32(segnale, correlazione32, picchi32, distanze32, bits
         fig32.canvas.draw_idle()
 
     fig32.canvas.mpl_connect('motion_notify_event', sincronizza_assi_32)
-
-    canvas = FigureCanvasTkAgg(fig32, master=frame)
-    canvas.draw()
-    canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
 
     toolbar = NavigationToolbar2Tk(canvas, frame)
     toolbar.update()

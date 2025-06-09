@@ -72,9 +72,11 @@ def visualizza_file(percorso_file_var, status_label, media_scorrevole_var, ax1, 
     larghezza_finestra = int((durata_bit / 4) / periodo_campionamento)
 
     if media_scorrevole_var.get():
+        print("Debug: Test media scorrevole non abilitata")
         finestra = np.ones(larghezza_finestra) / larghezza_finestra
         segnale_filtrato = np.convolve(segnale_normalizzato, finestra, mode='same')
     else:
+        print("Debug: Test media scorrevole non abilitata")
         segnale_filtrato = segnale_normalizzato
     segnale_filtrato = np.nan_to_num(segnale_filtrato)
 

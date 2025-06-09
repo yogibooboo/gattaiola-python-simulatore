@@ -15,6 +15,7 @@ def media_correlazione_32(segnale, larghezza_finestra=8, lunghezza_correlazione=
     picchi32 = []
     distanze = []
     bits32 = []
+    bytes32 = []  # Inizializzazione per evitare l'errore
     soglia_mezzo_bit = 24
     stato_decodifica = 0
     contatore_zeri = 0
@@ -138,7 +139,7 @@ def media_correlazione_32(segnale, larghezza_finestra=8, lunghezza_correlazione=
                                 crc <<= 1
                                 if c15 ^ bit:
                                     crc ^= polynomial
-                            crc &= 0xffff
+                            crc &= 0xffff  # Correzione: rimosso "Unito"
                         crc_reversed = 0
                         for j in range(16):
                             if (crc >> j) & 1:
@@ -164,7 +165,10 @@ def media_correlazione_32(segnale, larghezza_finestra=8, lunghezza_correlazione=
                         stato_decobytes = 0
             numbit -= 1
 
-    print("Debug: Segnale filtrato restituito, lunghezza: {len(segnale_filtrato32)}")
+    if not bytes32:
+        log_message("Nessuna sequenza di byte valida trovata")
+    
+    print(f"Debug: Segnale filtrato restituito, lunghezza: {len(segnale_filtrato32)}")
     return segnale_filtrato32, correlazione32, picchi32, distanze, bits32, bytes32
 
 def analizza_con_buffer_scorrevole(percorso_file, status_label, log_callback=None):
@@ -178,12 +182,12 @@ def analizza_con_buffer_scorrevole(percorso_file, status_label, log_callback=Non
     print(f"Debug: Segnale letto, lunghezza: {len(segnale)}")
     segnale_filtrato32, correlazione32, picchi32, distanze32, bits32, bytes32 = media_correlazione_32(
         segnale, log_callback=log_callback)
-    visualizza_analisi_esp32(segnale, correlazione32, picchi32, distanze32, bits32, bytes32, campioni_per_bit)
+    visualizza_analisi_esp32(segnale, correlazione32, picchi32, distanze32, bits32, bytes32, campioni_per_bit, segnale_filtrato32)
     print(f"Debug: Segnale filtrato restituito, lunghezza: {len(segnale_filtrato32)}")
     status_label.config(text="Stato: Analisi ESP32 - Media, correlazione e decodifica completati")
     return segnale_filtrato32
 
-def visualizza_analisi_esp32(segnale, correlazione32, picchi32, distanze32, bits32, bytes32, campioni_per_bit):
+def visualizza_analisi_esp32(segnale, correlazione32, picchi32, distanze32, bits32, bytes32, campioni_per_bit, segnale_filtrato32):
     global _ax1_32
     print("Debug: Inizio visualizza_analisi_esp32...")
     window32 = tk.Toplevel()
@@ -192,14 +196,55 @@ def visualizza_analisi_esp32(segnale, correlazione32, picchi32, distanze32, bits
     frame = tk.Frame(window32)
     frame.pack(fill=tk.BOTH, expand=True)
 
+    # Frame per il titolo e i radiobutton
+    title_frame = tk.Frame(frame)
+    title_frame.pack(side=tk.TOP, fill=tk.X, padx=5, pady=5)
+
+    # Variabile per i radiobutton
+    mostra_segnale_var = tk.IntVar(value=0)  # 0 = Grezzo, 1 = Filtrato, 2 = Entrambi
+
+    # Funzione per aggiornare il grafico
+    def aggiorna_grafico_segnale():
+        ax1_32.clear()
+        scelta = mostra_segnale_var.get()
+        
+        # Plotta in base alla selezione
+        if scelta == 0:  # Grezzo
+            ax1_32.plot(segnale, label="Segnale Grezzo", color='blue', alpha=0.8)
+        elif scelta == 1:  # Filtrato
+            ax1_32.plot(segnale_filtrato32, label="Segnale Filtrato", color='red', alpha=0.8)
+        elif scelta == 2:  # Entrambi
+            ax1_32.plot(segnale, label="Segnale Grezzo", color='blue', alpha=0.6)
+            ax1_32.plot(segnale_filtrato32, label="Segnale Filtrato", color='red', alpha=0.6)
+
+        # Aggiungi linee di riferimento
+        for i in range(0, len(segnale), campioni_per_bit):
+            ax1_32.axvline(i, color='black', linestyle='-', linewidth=0.8)
+            ax1_32.axvline(i + campioni_per_bit // 2, color='gray', linestyle='--', linewidth=0.5)
+        
+        ax1_32.set_title('Segnale di Ingresso')
+        ax1_32.set_xlabel("Campioni")
+        ax1_32.set_ylabel("Ampiezza")
+        ax1_32.legend()
+        fig32.canvas.draw()
+
+    # Aggiungi titolo e radiobutton
+    tk.Label(title_frame, text="Segnale di Ingresso").pack(side=tk.LEFT, padx=5)
+    tk.Radiobutton(title_frame, text="Grezzo", variable=mostra_segnale_var, value=0, command=aggiorna_grafico_segnale).pack(side=tk.LEFT, padx=5)
+    tk.Radiobutton(title_frame, text="Filtrato", variable=mostra_segnale_var, value=1, command=aggiorna_grafico_segnale).pack(side=tk.LEFT, padx=5)
+    tk.Radiobutton(title_frame, text="Entrambi", variable=mostra_segnale_var, value=2, command=aggiorna_grafico_segnale).pack(side=tk.LEFT, padx=5)
+
     fig32, (ax1_32, ax2_32) = plt.subplots(2, 1, figsize=(10, 6))
     plt.tight_layout()
 
-    ax1_32.plot(segnale, label="Segnale", color='blue')
+    # Plotta il segnale iniziale (default: grezzo)
+    ax1_32.plot(segnale, label="Segnale Grezzo", color='blue', alpha=0.8)
     for i in range(0, len(segnale), campioni_per_bit):
         ax1_32.axvline(i, color='black', linestyle='-', linewidth=0.8)
         ax1_32.axvline(i + campioni_per_bit // 2, color='gray', linestyle='--', linewidth=0.5)
     ax1_32.set_title('Segnale di Ingresso')
+    ax1_32.set_xlabel("Campioni")
+    ax1_32.set_ylabel("Ampiezza")
     ax1_32.legend()
 
     ax2_32.plot(correlazione32, label='Correlazione', color='green')

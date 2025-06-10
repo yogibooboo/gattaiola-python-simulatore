@@ -72,11 +72,11 @@ def visualizza_file(percorso_file_var, status_label, media_scorrevole_var, ax1, 
     larghezza_finestra = int((durata_bit / 4) / periodo_campionamento)
 
     if media_scorrevole_var.get():
-        print("Debug: Test media scorrevole non abilitata")
+        print("Debug: Media scorrevole abilitata")
         finestra = np.ones(larghezza_finestra) / larghezza_finestra
         segnale_filtrato = np.convolve(segnale_normalizzato, finestra, mode='same')
     else:
-        print("Debug: Test media scorrevole non abilitata")
+        print("Debug: Media scorrevole non abilitata")
         segnale_filtrato = segnale_normalizzato
     segnale_filtrato = np.nan_to_num(segnale_filtrato)
 
@@ -137,7 +137,7 @@ def visualizza_file(percorso_file_var, status_label, media_scorrevole_var, ax1, 
                     crc_calcolato ^= polynomial
             crc_calcolato &= 0xffff
         crc_reversed = 0
-        for i in range(0, 16):  # Corretto il SyntaxError
+        for i in range(0, 16):
             if (crc_calcolato >> i) & 1:
                 crc_reversed |= 1 << (15 - i)
         crc_ok = crc_ricevuto == crc_reversed
@@ -241,14 +241,15 @@ def esegui_correlazione(percorso_file_var, status_label, risultato_text, media_s
             status_label.config(text="Errore: BYTES_NOTI non trovato in correlazione")
             risultato_text.insert(tk.END, f"Errore: {e}\n")
             return
-        print("Debug: Forzo segnale grezzo...")
+        print("Debug: Chiamo correlazione_con_sequenza_nota...")
         correlazione.correlazione_con_sequenza_nota(
             percorso_file_var.get(),
             correlazione.BYTES_NOTI,
             status_label,
             ax1_32,
             risultato_text,
-            None
+            segnale_filtrato,
+            media_scorrevole_var
         )
         print("Debug: Correlazione completata")
     except Exception as e:
@@ -269,7 +270,7 @@ window = tk.Tk()
 window.title("Acquisizione Segnale ESP32")
 
 percorso_file_var = tk.StringVar(value="")
-media_scorrevole_var = tk.BooleanVar(value=False)
+media_scorrevole_var = tk.BooleanVar(value=True)
 
 tk.Label(window, text="File:").grid(row=0, column=0, padx=5, pady=5)
 tk.Entry(window, textvariable=percorso_file_var, width=50).grid(row=0, column=1, padx=5, pady=5)
@@ -294,7 +295,7 @@ risultato_text = tk.Text(window, height=20, width=60)
 risultato_text.grid(row=10, column=0, columnspan=3, padx=5, pady=5)
 
 fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 6))
-plt.tight_layout()
+plt.tight_layout(pad=2.0)
 
 fig.canvas.mpl_connect('motion_notify_event', sincronizza_assi(ax1, ax2, fig))
 

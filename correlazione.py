@@ -61,27 +61,12 @@ def genera_segnale_riferimento(sequenza_bit, debug_plot=False):
         print(f"Debug: Errore in genera_segnale_riferimento: {e}")
         raise
 
-import numpy as np
-import tkinter as tk
-from matplotlib.figure import Figure
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
-from scipy.signal import find_peaks
-import struct
-
-import numpy as np
-import tkinter as tk
-from matplotlib.figure import Figure
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
-from scipy.signal import find_peaks
-import struct
-import time
-
-def correlazione_con_sequenza_nota(percorso_file, bytes_noti, status_label, ax1, risultato_text, segnale_filtrato=None):
+def correlazione_con_sequenza_nota(percorso_file, bytes_noti, status_label, ax1, risultato_text, segnale_filtrato=None, media_scorrevole_var=None):
     global _confronto_window
     print("Debug: Inizio funzione correlazione_con_sequenza_nota...")
     try:
         status_label.config(text="Stato: Correlazione in corso...")
-        if segnale_filtrato is None:
+        if segnale_filtrato is None or (media_scorrevole_var is not None and not media_scorrevole_var.get()):
             print("Debug: Lettura file .bin...")
             with open(percorso_file, "rb") as f:
                 data = f.read()
@@ -182,7 +167,7 @@ def correlazione_con_sequenza_nota(percorso_file, bytes_noti, status_label, ax1,
                                 break
 
             def aggiorna_grafico(offset_attuale):
-                nonlocal xlim, ylim, previous_offset, current_peak_idx, risultati, idx_max, previous_idx_max
+                nonlocal current_peak_idx, risultati, idx_max, offset, previous_offset, xlim, ylim, previous_idx_max
 
                 # Salva i limiti correnti per catturare lo zoom manuale
                 current_xlim = ax_confronto.get_xlim()
@@ -213,12 +198,10 @@ def correlazione_con_sequenza_nota(percorso_file, bytes_noti, status_label, ax1,
                 ax_confronto.set_ylabel("Ampiezza")
                 ax_confronto.legend()
 
-                # MODIFICA: Gestione dei limiti x
-                # Se idx_max è cambiato o è stato impostato un nuovo inizio_offset, resetta i limiti x
+                # Gestione dei limiti x
                 if idx_max != previous_idx_max:
                     new_xlim = (inizio_offset, fine_offset)
                 else:
-                    # Se idx_max non è cambiato, mantieni lo zoom manuale se presente
                     if current_xlim != (0, 1) and current_xlim != (inizio_offset - (offset_attuale - previous_offset), fine_offset - (offset_attuale - previous_offset)):
                         lunghezza_zoom = current_xlim[1] - current_xlim[0]
                         shift = offset_attuale - previous_offset
@@ -238,8 +221,8 @@ def correlazione_con_sequenza_nota(percorso_file, bytes_noti, status_label, ax1,
                 # Aggiorna i limiti salvati
                 xlim = ax_confronto.get_xlim()
                 ylim = ax_confronto.get_ylim()
-                previous_offset = offset_attuale  # Aggiorna l'offset precedente
-                previous_idx_max = idx_max  # Aggiorna il valore precedente di idx_max
+                previous_offset = offset_attuale
+                previous_idx_max = idx_max
 
                 print(f"Debug: Limiti y: {ax_confronto.get_ylim()}")
                 print(f"Debug: Limiti x: {ax_confronto.get_xlim()}")
@@ -263,7 +246,6 @@ def correlazione_con_sequenza_nota(percorso_file, bytes_noti, status_label, ax1,
                     current_peak_idx -= 1
                     idx_max = risultati[current_peak_idx][1]
                     print(f"Debug: Picco precedente selezionato, idx_max={idx_max}, current_peak_idx={current_peak_idx}")
-                    # Resetta l'offset per allineare il nuovo picco
                     offset = 0
                     previous_offset = 0
                     aggiorna_grafico(offset)
@@ -276,7 +258,6 @@ def correlazione_con_sequenza_nota(percorso_file, bytes_noti, status_label, ax1,
                     current_peak_idx += 1
                     idx_max = risultati[current_peak_idx][1]
                     print(f"Debug: Picco successivo selezionato, idx_max={idx_max}, current_peak_idx={current_peak_idx}")
-                    # Resetta l'offset per allineare il nuovo picco
                     offset = 0
                     previous_offset = 0
                     aggiorna_grafico(offset)
@@ -288,11 +269,9 @@ def correlazione_con_sequenza_nota(percorso_file, bytes_noti, status_label, ax1,
                 try:
                     nuovo_inizio = int(valore)
                     if nuovo_inizio >= 0 and nuovo_inizio <= len(segnale) - lunghezza_riferimento:
-                        # Calcola il nuovo offset in base al nuovo inizio
                         offset = nuovo_inizio - (idx_max - lunghezza_riferimento)
-                        previous_offset = offset  # Sincronizza previous_offset
-                        # Simula un cambio di idx_max per forzare il reset dei limiti x
-                        previous_idx_max = idx_max - 1  # Forza un valore diverso per resettare i limiti
+                        previous_offset = offset
+                        previous_idx_max = idx_max - 1
                         print(f"Debug: Campione iniziale impostato a {nuovo_inizio}, nuovo offset={offset}")
                         aggiorna_grafico(offset)
                     else:
@@ -312,7 +291,11 @@ def correlazione_con_sequenza_nota(percorso_file, bytes_noti, status_label, ax1,
             risultato_text.insert(tk.END, f"Confidenza massima: {max_conf:.3f}\n")
             risultato_text.insert(tk.END, "Corrispondenze trovate:\n")
             for conf, idx, bit in risultati:
-                risultato_text.insert(tk.END, f"Confidenza {conf:.3f} al bit {bit} (campione {idx})\n")
+                inizio_bit = bit - 101
+                inizio_campione = idx - 3232
+                inizio_bit_str = str(inizio_bit) if inizio_bit >= 0 else "non valido"
+                inizio_campione_str = str(inizio_campione) if inizio_campione >= 0 else "non valido"
+                risultato_text.insert(tk.END, f"Confidenza {conf:.3f} al bit {bit} ({idx}), inizio {inizio_bit_str} ({inizio_campione_str})\n")
         else:
             risultato_text.insert(tk.END, f"Nessuna corrispondenza sopra la soglia {soglia}\n")
             risultato_text.insert(tk.END, f"Valore massimo correlazione: {np.max(np.abs(correlazione)):.3f}\n")

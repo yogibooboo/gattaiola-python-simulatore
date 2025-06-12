@@ -15,7 +15,7 @@ def media_correlazione_32(segnale, larghezza_finestra=8, lunghezza_correlazione=
     picchi32 = []
     distanze = []
     bits32 = []
-    bytes32 = []  # Inizializzazione per evitare l'errore
+    bytes32 = []
     soglia_mezzo_bit = 24
     stato_decodifica = 0
     contatore_zeri = 0
@@ -24,12 +24,15 @@ def media_correlazione_32(segnale, larghezza_finestra=8, lunghezza_correlazione=
     stato_decobytes = 0
     crc = 0
     polynomial = 0x1021
+    total_bits = 0  # Contatore bit totali
+    last_sync_bit = 0  # Ultimo bit di sync
 
     def log_message(message):
         if log_callback:
             log_callback(message)
         print(message)
 
+    # Inizializzazione array
     for i in range(28):
         segnale_filtrato32[i] = 0
     for i in range(16):
@@ -104,6 +107,7 @@ def media_correlazione_32(segnale, larghezza_finestra=8, lunghezza_correlazione=
                 stato_decodifica = 0
 
         while numbit > 0:
+            total_bits += 1  # Incrementa bit totali
             if stato_decobytes == 0:
                 if newbit == 0:
                     contatore_zeri += 1
@@ -113,7 +117,12 @@ def media_correlazione_32(segnale, larghezza_finestra=8, lunghezza_correlazione=
                         contatore_bytes = 0
                         contatore_bits = 0
                         bytes32 = [0] * 10
-                        log_message(f"Sequenza sync at: {i-24}")
+                        sync_pos = i - 24
+                        sync_bit = total_bits
+                        last_sync_bit = sync_bit  # Salva ultimo sync
+                        inizio_pos = sync_pos - 352
+                        inizio_bit = sync_bit - 11
+                        log_message(f"Sequenza sync at: {sync_pos} (bit: {sync_bit}), inizio: {inizio_pos} (bit: {inizio_bit})")
                     contatore_zeri = 0
             elif stato_decobytes == 1:
                 if contatore_bits < 8:
@@ -159,18 +168,18 @@ def media_correlazione_32(segnale, larghezza_finestra=8, lunghezza_correlazione=
                         contatore_bytes = 0
                         stato_decobytes = 0
                     elif newbit != 1:
-                        log_message(f"Perso sync at: {i-24}")
+                        byte_count = (total_bits - last_sync_bit) // 9  # Calcola byte
+                        log_message(f"Perso sync at: {i-24} (bit: {total_bits}, byte: {byte_count})")
                         contatore_zeri = 0
                         contatore_bits = 0
                         stato_decobytes = 0
-            numbit -= 1
+            numbit -= 1  # Decrementa correttamente
 
     if not bytes32:
         log_message("Nessuna sequenza di byte valida trovata")
     
     print(f"Debug: Segnale filtrato restituito, lunghezza: {len(segnale_filtrato32)}")
     return segnale_filtrato32, correlazione32, picchi32, distanze, bits32, bytes32
-
 def analizza_con_buffer_scorrevole(percorso_file, status_label, log_callback=None):
     print("Debug: Inizio analizza_con_buffer_scorrevole...")
     periodo_campionamento = 1 / 134.2e3 * 1e6
@@ -212,10 +221,10 @@ def visualizza_analisi_esp32(segnale, correlazione32, picchi32, distanze32, bits
         if scelta == 0:  # Grezzo
             ax1_32.plot(segnale, label="Segnale Grezzo", color='blue', alpha=0.8)
         elif scelta == 1:  # Filtrato
-            ax1_32.plot(segnale_filtrato32, label="Segnale Filtrato", color='red', alpha=0.8)
+            ax1_32.plot(segnale_filtrato32, label="Segnale Filtrato", color='green', alpha=0.8)
         elif scelta == 2:  # Entrambi
             ax1_32.plot(segnale, label="Segnale Grezzo", color='blue', alpha=0.6)
-            ax1_32.plot(segnale_filtrato32, label="Segnale Filtrato", color='red', alpha=0.6)
+            ax1_32.plot(segnale_filtrato32, label="Segnale Filtrato", color='green', alpha=0.6)
 
         # Aggiungi linee di riferimento
         for i in range(0, len(segnale), campioni_per_bit):

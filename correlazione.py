@@ -5,7 +5,9 @@ import matplotlib.pyplot as plt
 import tkinter as tk
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 
+
 BYTES_NOTI = [0x54, 0xDD, 0x25, 0x3C, 0x3D, 0xE1, 0x01, 0x80, 0x1C, 0xC9]
+
 
 # Variabile globale per tracciare la finestra di confronto
 _confronto_window = None
@@ -293,8 +295,8 @@ def correlazione_con_sequenza_nota(percorso_file, bytes_noti, status_label, ax1,
             for conf, idx, bit in risultati:
                 inizio_bit = bit - 101
                 inizio_campione = idx - 3232
-                inizio_bit_str = str(inizio_bit) if inizio_bit >= 0 else "non valido"
-                inizio_campione_str = str(inizio_campione) if inizio_campione >= 0 else "non valido"
+                inizio_bit_str = str(inizio_bit) if inizio_bit >= 0 else "nv"
+                inizio_campione_str = str(inizio_campione) if inizio_campione >= 0 else "nv"
                 risultato_text.insert(tk.END, f"Confidenza {conf:.3f} al bit {bit} ({idx}), inizio {inizio_bit_str} ({inizio_campione_str})\n")
         else:
             risultato_text.insert(tk.END, f"Nessuna corrispondenza sopra la soglia {soglia}\n")
@@ -303,16 +305,21 @@ def correlazione_con_sequenza_nota(percorso_file, bytes_noti, status_label, ax1,
         print("Debug: Disegno curva di correlazione in ROSSO...")
         ax2 = ax1.twinx()
         ax2.clear()
-        ax2.plot(correlazione, 'r-', label='Correlazione', alpha=0.5)
+        # Limita la correlazione ai primi 10000 campioni
+        indici = np.arange(min(len(correlazione), 10000))
+        ax2.plot(indici, correlazione[:10000], 'r-', label='Correlazione', alpha=0.5)
         for idx in picchi_pos:
-            ax2.plot(idx, correlazione[idx], 'kx', label='Picco positivo' if idx == picchi_pos[0] else "", markersize=10)
+            if idx < 10000:  # Disegna solo i picchi entro 10000 campioni
+                ax2.plot(idx, correlazione[idx], 'kx', label='Picco positivo' if idx == picchi_pos[0] else "", markersize=10)
         for idx in picchi_neg:
-            ax2.plot(idx, correlazione[idx], 'kx', label='Picco negativo' if idx == picchi_neg[0] else "", markersize=10)
+            if idx < 10000:  # Disegna solo i picchi entro 10000 campioni
+                ax2.plot(idx, correlazione[idx], 'kx', label='Picco negativo' if idx == picchi_neg[0] else "", markersize=10)
         ax2.axhline(soglia, color='g', linestyle='--', label='Soglia positiva')
         ax2.axhline(-soglia, color='g', linestyle='--', label='Soglia negativa')
         ax2.set_ylabel('Correlazione')
-        ax2.legend(loc='upper right')
+        ax2.set_xlim(0, 10000)  # Allinea con ax1
         ax2.set_ylim(-1, 1)
+        ax2.legend(loc='upper right')
         ax1.figure.canvas.draw()
         ax1.figure.canvas.flush_events()
         print("Debug: Grafico aggiornato")

@@ -1,0 +1,124 @@
+import numpy as np
+import scipy.signal as signal
+import matplotlib.pyplot as plt
+
+# Parametri globali
+FS = 134.2e3  # Frequenza di campionamento: 134.2 kHz
+R = 560e3     # Resistenza: 560 kΩ
+C = 82e-12    # Capacità: 82 pF
+
+def create_fdx_b_signal():
+    # Parametri segnale
+    SAMPLES_PER_BIT = 32  # 32 valori per bit
+    SAMPLES_PER_HALF = 16  # 16 valori per metà bit
+    TOTAL_SAMPLES = 10000  # Totale campioni nel file
+    CENTER_VALUE = 2048   # Valore centrale ADC
+    AMPLITUDE = 200       # Ampiezza oscillazione
+    BIT_SEQUENCE = [
+        0,0,0,0,0,0,0,0,0,0,1,0,0,1,0,1,0,1,0,1,1,0,1,1,1,0,1,1,1,1,0,1,
+        0,0,1,0,0,1,0,0,1,1,1,1,0,0,1,1,0,1,1,1,1,0,0,1,1,0,0,0,0,1,1,1,
+        1,1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,1,1,0,0,1,1,1,0,0,0,1,1,0,0,1,
+        0,0,1,1,1,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,0,1,0,1,0,1,0,1,1
+    ]  # Sequenza di 128 bit
+
+    # Generazione del segnale
+    samples = np.zeros(TOTAL_SAMPLES, dtype=np.float64)  # Usa float64 per il filtro
+    last_half_value = -AMPLITUDE
+
+    sample_idx = 0
+    while sample_idx < TOTAL_SAMPLES:
+        for bit in BIT_SEQUENCE:
+            if sample_idx >= TOTAL_SAMPLES:
+                break
+            # Prima metà: opposta all'ultima metà del bit precedente
+            first_half_value = -last_half_value
+            # Seconda metà: dipende dal bit
+            second_half_value = -first_half_value if bit == 0 else first_half_value
+            # Riempie i campioni per la prima metà
+            for i in range(min(SAMPLES_PER_HALF, TOTAL_SAMPLES - sample_idx)):
+                samples[sample_idx + i] = CENTER_VALUE + first_half_value
+            sample_idx += SAMPLES_PER_HALF
+            # Riempie i campioni per la seconda metà
+            for i in range(min(SAMPLES_PER_HALF, TOTAL_SAMPLES - sample_idx)):
+                samples[sample_idx + i] = CENTER_VALUE + second_half_value
+            sample_idx += SAMPLES_PER_HALF
+            # Aggiorna l'ultima metà
+            last_half_value = second_half_value
+
+    # Scrittura del file originale
+    samples_uint16 = samples.astype(np.uint16)
+    with open('fdx_b_signal.bin', 'wb') as f:
+        samples_uint16.tofile(f)
+    print("File 'fdx_b_signal.bin' creato con successo!")
+
+    return samples
+
+def apply_rc_filter(signal_data, fs=FS, R=R, C=C):
+    # Calcolo della frequenza di taglio del filtro RC
+    fc = 1 / (2 * np.pi * R * C)
+    print(f"Frequenza di taglio del filtro RC: {fc:.2f} Hz")
+
+    # Creazione del filtro passa-basso RC (primo ordine)
+    b, a = signal.butter(1, fc, fs=fs, btype='low', analog=False)
+
+    # Applicazione del filtro due volte
+    filtered_signal = signal.lfilter(b, a, signal_data)  # Primo passaggio
+    filtered_signal = signal.lfilter(b, a, filtered_signal)  # Secondo passaggio
+
+    # Conversione in uint16 per il file binario
+    filtered_signal_uint16 = filtered_signal.astype(np.uint16)
+
+    # Scrittura del file filtrato
+    with open('fdx_b_signal_filtered.bin', 'wb') as f:
+        filtered_signal_uint16.tofile(f)
+    print("File 'fdx_b_signal_filtered.bin' creato con successo!")
+
+    return filtered_signal, fc
+
+def plot_transfer_function(R=R, C=C):
+    # Parametri del filtro
+    fc = 1 / (2 * np.pi * R * C)
+    freqs = np.logspace(3, 6, 1000)  # Da 1 kHz a 1 MHz
+    s = 1j * 2 * np.pi * freqs
+    H_single = 1 / (1 + s * R * C)  # Funzione di trasferimento di un singolo filtro RC
+    H = H_single * H_single  # Funzione di trasferimento complessiva (due filtri in cascata)
+
+    # Calcolo di ampiezza e fase
+    magnitude = 20 * np.log10(np.abs(H))
+    phase = np.angle(H, deg=True)
+
+    # Creazione del grafico
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8))
+    
+    # Plot dell'ampiezza
+    ax1.semilogx(freqs, magnitude)
+    ax1.set_title('Funzione di Trasferimento - Due Filtri RC in Cascata')
+    ax1.set_xlabel('Frequenza (Hz)')
+    ax1.set_ylabel('Ampiezza (dB)')
+    ax1.grid(True, which="both", ls="--")
+    ax1.axvline(fc, color='r', linestyle='--', label=f'fc (singolo filtro) = {fc:.2f} Hz')
+    ax1.legend()
+
+    # Plot della fase
+    ax2.semilogx(freqs, phase)
+    ax2.set_xlabel('Frequenza (Hz)')
+    ax2.set_ylabel('Fase (gradi)')
+    ax2.grid(True, which="both", ls="--")
+    ax2.axvline(fc, color='r', linestyle='--')
+    
+    plt.tight_layout()
+    plt.show()
+    print("Grafico della funzione di trasferimento mostrato.")
+
+def main():
+    # Genera il segnale originale
+    original_signal = create_fdx_b_signal()
+
+    # Applica il filtro RC due volte
+    filtered_signal, fc = apply_rc_filter(original_signal, fs=FS, R=R, C=C)
+
+    # Plot della funzione di trasferimento
+    plot_transfer_function(R=R, C=C)
+
+if __name__ == "__main__":
+    main()

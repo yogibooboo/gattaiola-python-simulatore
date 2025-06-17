@@ -4,10 +4,18 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 import struct
 
+# Settaggio univoco per la finestra di correlazione
+FINESTRA_ESTESA = False  # True per finestra estesa (64 campioni), False per standard (32 campioni)
+
+# Variabile globale per memorizzare l'ultimo offset
+ULTIMO_OFFSET = None  # Offset medio non arrotondato dell'ultima sequenza di sync
+
 _ax1_32 = None
 
 def media_correlazione_32(segnale, larghezza_finestra=8, lunghezza_correlazione=32, log_callback=None):
     print("Debug: Inizio media_correlazione_32...")
+    print(f"Debug: Finestra di correlazione: {'estesa (64 campioni)' if FINESTRA_ESTESA else 'standard (32 campioni)'}")
+    global ULTIMO_OFFSET
     N = len(segnale)
     segnale_32 = np.array(segnale, dtype=np.int32)
     segnale_filtrato32 = np.zeros(N, dtype=np.int32)
@@ -43,12 +51,27 @@ def media_correlazione_32(segnale, larghezza_finestra=8, lunghezza_correlazione=
         somma_media = np.sum(segnale_32[i-4:i+4], dtype=np.int32)
         segnale_filtrato32[i] = somma_media // larghezza_finestra
 
-    if i >= lunghezza_correlazione:
-        correlazione32[16] = 0
-        for j in range(16):
-            correlazione32[16] += segnale_filtrato32[j]
-        for j in range(16, 32):
-            correlazione32[16] -= segnale_filtrato32[j]
+    # Calcolo della correlazione
+    if FINESTRA_ESTESA:
+        lunghezza_correlazione = 64
+        if i >= lunghezza_correlazione:
+            correlazione32[16] = 0
+            for j in range(-16, 0):  # -16
+                correlazione32[16] -= segnale_filtrato32[j]
+            for j in range(0, 16):  # +16
+                correlazione32[16] += segnale_filtrato32[j]
+            for j in range(16, 32):  # -16
+                correlazione32[16] -= segnale_filtrato32[j]
+            for j in range(32, 48):  # +16
+                correlazione32[16] += segnale_filtrato32[j]
+    else:
+        lunghezza_correlazione = 32
+        if i >= lunghezza_correlazione:
+            correlazione32[16] = 0
+            for j in range(16):  # +16
+                correlazione32[16] += segnale_filtrato32[j]
+            for j in range(16, 32):  # -16
+                correlazione32[16] -= segnale_filtrato32[j]
 
     max_i = max_i8 = min_i = min_i8 = 0
     stato = 1
@@ -58,7 +81,10 @@ def media_correlazione_32(segnale, larghezza_finestra=8, lunghezza_correlazione=
 
     for i in range(33, N-4):
         segnale_filtrato32[i] = segnale_filtrato32[i-1] - (segnale_32[i-4] // larghezza_finestra) + (segnale_32[i+3] // larghezza_finestra)
-        correlazione32[i-16] = correlazione32[i-17] - segnale_filtrato32[i-32] + 2 * segnale_filtrato32[i-16] - segnale_filtrato32[i]
+        if FINESTRA_ESTESA:
+            correlazione32[i-16] = correlazione32[i-17] - segnale_filtrato32[i-48] + segnale_filtrato32[i-32] - segnale_filtrato32[i-16] + segnale_filtrato32[i]
+        else:
+            correlazione32[i-16] = correlazione32[i-17] - segnale_filtrato32[i-32] + 2 * segnale_filtrato32[i-16] - segnale_filtrato32[i]
 
         newbit = 2
         numbit = 0
@@ -122,7 +148,12 @@ def media_correlazione_32(segnale, larghezza_finestra=8, lunghezza_correlazione=
                         last_sync_bit = sync_bit  # Salva ultimo sync
                         inizio_pos = sync_pos - 352
                         inizio_bit = sync_bit - 11
-                        log_message(f"Sequenza sync at: {sync_pos} (bit: {sync_bit}), inizio: {inizio_pos} (bit: {inizio_bit})")
+                        # Calcolo dell'offset medio per gli 8 bit a zero centrali
+                        zero_positions = [pos for bit, pos in bits32[-10:]]  # Ultimi 10 bit a zero
+                        offset_medio = sum(pos % 32 for pos in zero_positions[1:-1]) / 8
+                        offset = round(offset_medio)
+                        ULTIMO_OFFSET = offset_medio  # Salva l'offset non arrotondato
+                        log_message(f"Sync at: {sync_pos} (bit: {sync_bit}), inizio: {inizio_pos} (bit: {inizio_bit}), offset: {offset}")
                     contatore_zeri = 0
             elif stato_decobytes == 1:
                 if contatore_bits < 8:

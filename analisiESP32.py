@@ -10,12 +10,16 @@ FINESTRA_ESTESA = False  # True per finestra estesa (64 campioni), False per sta
 # Variabile globale per memorizzare l'ultimo offset
 ULTIMO_OFFSET = None  # Offset medio non arrotondato dell'ultima sequenza di sync
 
+# Variabili globali per i dati di correlazione
+_correlazione32 = None
+_picchi32 = None
+_bits32 = None
 _ax1_32 = None
 
 def media_correlazione_32(segnale, larghezza_finestra=8, lunghezza_correlazione=32, log_callback=None):
     print("Debug: Inizio media_correlazione_32...")
     print(f"Debug: Finestra di correlazione: {'estesa (64 campioni)' if FINESTRA_ESTESA else 'standard (32 campioni)'}")
-    global ULTIMO_OFFSET
+    global ULTIMO_OFFSET, _correlazione32, _picchi32, _bits32
     N = len(segnale)
     segnale_32 = np.array(segnale, dtype=np.int32)
     segnale_filtrato32 = np.zeros(N, dtype=np.int32)
@@ -210,6 +214,11 @@ def media_correlazione_32(segnale, larghezza_finestra=8, lunghezza_correlazione=
     if not bytes32:
         log_message("Nessuna sequenza di byte valida trovata")
     
+    # Salva i dati globalmente
+    _correlazione32 = correlazione32
+    _picchi32 = picchi32
+    _bits32 = bits32
+
     print(f"Debug: Segnale filtrato restituito, lunghezza: {len(segnale_filtrato32)}")
     return segnale_filtrato32, correlazione32, picchi32, distanze, bits32, bytes32
 
@@ -283,7 +292,7 @@ def visualizza_analisi_esp32(segnale, correlazione32, picchi32, distanze32, bits
     canvas.draw()
     canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
 
-    # Frame per i radiobutton, integrato sopra il canvas
+    # Frame per i radiobutton
     radio_frame = tk.Frame(frame)
     radio_frame.pack(side=tk.TOP, fill=tk.X, padx=5, pady=2)
     tk.Label(radio_frame, text="Segnale di Ingresso", font=("Arial", 10, "bold")).pack(side=tk.LEFT, padx=5)
@@ -303,17 +312,19 @@ def visualizza_analisi_esp32(segnale, correlazione32, picchi32, distanze32, bits
 
     ax2_32.plot(correlazione32, label='Correlazione', color='green')
     ax2_32.plot(picchi32, correlazione32[picchi32], "x", color='darkorange', label='Picchi', markersize=10, markeredgewidth=2)
-    bit0_posizioni = [pos for bit, pos in bits32]
-    bit0_valori = [correlazione32[pos] for pos in bit0_posizioni]
-    bit1_posizioni = [pos for bit, pos in bits32 if bit == 1]
-    bit1_valori = [correlazione32[pos] for pos in bit1_posizioni]
-    ax2_32.plot(bit0_posizioni, bit0_valori, "o", color='green', label='Bit 0', markersize=8, markeredgewidth=1.5)
-    ax2_32.plot(bit1_posizioni, bit1_valori, "o", color='red', label='Bit 1', markersize=8, markeredgewidth=1)
+    bit0_pos = [pos for bit, pos in bits32 if bit == 0]
+    bit0_val = [correlazione32[pos] for pos in bit0_pos]
+    bit1_pos = [pos for bit, pos in bits32 if bit == 1]
+    bit1_val = [correlazione32[pos] for pos in bit1_pos]
+    if bit0_pos:
+        ax2_32.plot(bit0_pos, bit0_val, "o", color='green', label='Bit 0', markersize=8, markeredgewidth=1.5)
+    if bit1_pos:
+        ax2_32.plot(bit1_pos, bit1_val, "o", color='red', label='Bit 1', markersize=8, markeredgewidth=1)
     for i in range(0, len(correlazione32), campioni_per_bit):
-        ax2_32.axvline(i, color='black', linestyle='-', linewidth=0.8)
+        ax2_32.axvline(i, color='black', linestyle='--', linewidth=0.8)
         ax2_32.axvline(i + campioni_per_bit // 2, color='gray', linestyle='--', linewidth=0.5)
     ax2_32.set_title('Correlazione con Bit')
-    ax2_32.set_xlabel("Campioni", loc='left')  # Etichetta a sinistra
+    ax2_32.set_xlabel("Campioni", loc='left')  # Correzione della stringa
     ax2_32.set_ylabel("Correlazione")
     ax2_32.legend()
 
@@ -322,7 +333,7 @@ def visualizza_analisi_esp32(segnale, correlazione32, picchi32, distanze32, bits
             ax2_32.set_xlim(ax1_32.get_xlim())
         elif event.inaxes == ax2_32:
             ax1_32.set_xlim(ax2_32.get_xlim())
-        fig32.canvas.draw_idle()
+        fig32.canvas.draw()
 
     fig32.canvas.mpl_connect('motion_notify_event', sincronizza_assi_32)
 
@@ -335,3 +346,12 @@ def visualizza_analisi_esp32(segnale, correlazione32, picchi32, distanze32, bits
 
 def get_ax1_32():
     return _ax1_32
+
+def get_correlazione32():
+    return _correlazione32
+
+def get_picchi32():
+    return _picchi32
+
+def get_bits32():
+    return _bits32

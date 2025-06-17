@@ -1,0 +1,228 @@
+import numpy as np
+import scipy.signal as signal
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QRadioButton, QButtonGroup
+import sys
+
+def create_fdx_b_signal():
+    # Parametri segnale
+    FS = 134.2e3  # Frequenza di campionamento: 134.2 kHz
+    SAMPLES_PER_BIT = 32  # 32 valori per bit
+    SAMPLES_PER_HALF = 16  # 16 valori per metà bit
+    TOTAL_SAMPLES = 10000  # Totale campioni nel file
+    CENTER_VALUE = 2048   # Valore centrale ADC
+    AMPLITUDE = 200       # Ampiezza oscillazione
+    BIT_SEQUENCE = [
+        0,0,0,0,0,0,0,0,0,0,1,0,0,1,0,1,0,1,0,1,1,0,1,1,1,0,1,1,1,1,0,1,
+        0,0,1,0,0,1,0,0,1,1,1,1,0,0,1,1,0,1,1,1,1,0,0,1,1,0,0,0,0,1,1,1,
+        1,1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,1,1,0,0,1,1,1,0,0,0,1,1,0,0,1,
+        0,0,1,1,1,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,0,1,0,1,0,1,0,1,1
+    ]  # Sequenza di 128 bit
+
+    # Generazione del segnale
+    samples = np.zeros(TOTAL_SAMPLES, dtype=np.float64)
+    last_half_value = -AMPLITUDE
+
+    sample_idx = 0
+    while sample_idx < TOTAL_SAMPLES:
+        for bit in BIT_SEQUENCE:
+            if sample_idx >= TOTAL_SAMPLES:
+                break
+            first_half_value = -last_half_value
+            second_half_value = -first_half_value if bit == 0 else first_half_value
+            for i in range(min(SAMPLES_PER_HALF, TOTAL_SAMPLES - sample_idx)):
+                samples[sample_idx + i] = CENTER_VALUE + first_half_value
+            sample_idx += SAMPLES_PER_HALF
+            for i in range(min(SAMPLES_PER_HALF, TOTAL_SAMPLES - sample_idx)):
+                samples[sample_idx + i] = CENTER_VALUE + second_half_value
+            sample_idx += SAMPLES_PER_HALF
+            last_half_value = second_half_value
+
+    return samples, FS
+
+def apply_filter(signal_data, fs, filter_type, order, cutoff_freq, ripple=None):
+    if filter_type == 'RC':
+        fc = cutoff_freq / fs
+        b = [1 - fc, 0]
+        a = [1, fc - 1]
+    elif filter_type == 'Butterworth':
+        b, a = signal.butter(order, cutoff_freq, fs=fs, btype='low', analog=False)
+    elif filter_type == 'Chebyshev':
+        b, a = signal.cheby1(order, ripple, cutoff_freq, fs=fs, btype='low', analog=False)
+    elif filter_type == 'Bessel':
+        b, a = signal.bessel(order, cutoff_freq, fs=fs, btype='low', analog=False)
+    else:
+        raise ValueError("Tipo di filtro non riconosciuto")
+    
+    filtered_signal = signal.lfilter(b, a, signal_data)
+    filtered_signal_uint16 = np.clip(filtered_signal, 0, 65535).astype(np.uint16)
+    
+    with open('fdx_b_signal_filtered.bin', 'wb') as f:
+        filtered_signal_uint16.tofile(f)
+    print("File 'fdx_b_signal_filtered.bin' creato con successo!")
+    
+    return filtered_signal
+
+class FilterGUI(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Confronto Funzioni di Trasferimento Filtri")
+        self.setGeometry(100, 100, 800, 600)
+        
+        # Widget principale
+        main_widget = QWidget()
+        self.setCentralWidget(main_widget)
+        layout = QHBoxLayout()
+        main_widget.setLayout(layout)
+        
+        # Layout per i controlli
+        controls_widget = QWidget()
+        controls_layout = QVBoxLayout()
+        controls_widget.setLayout(controls_layout)
+        
+        # Campi di input
+        self.cutoff_freq_input = QLineEdit("6000")
+        controls_layout.addWidget(QLabel("Frequenza di taglio (Hz):"))
+        controls_layout.addWidget(self.cutoff_freq_input)
+        
+        self.order_input = QLineEdit("2")
+        controls_layout.addWidget(QLabel("Ordine del filtro:"))
+        controls_layout.addWidget(self.order_input)
+        
+        self.ripple_input = QLineEdit("1")
+        controls_layout.addWidget(QLabel("Ripple Chebyshev (dB):"))
+        controls_layout.addWidget(self.ripple_input)
+        
+        # Radio button per selezionare il filtro per il file
+        controls_layout.addWidget(QLabel("Filtro per il file FDX-B:"))
+        self.filter_group = QButtonGroup()
+        self.rc_radio = QRadioButton("RC")
+        self.butterworth_radio = QRadioButton("Butterworth")
+        self.chebyshev_radio = QRadioButton("Chebyshev")
+        self.bessel_radio = QRadioButton("Bessel")
+        self.rc_radio.setChecked(True)  # Default: RC
+        self.filter_group.addButton(self.rc_radio)
+        self.filter_group.addButton(self.butterworth_radio)
+        self.filter_group.addButton(self.chebyshev_radio)
+        self.filter_group.addButton(self.bessel_radio)
+        controls_layout.addWidget(self.rc_radio)
+        controls_layout.addWidget(self.butterworth_radio)
+        controls_layout.addWidget(self.chebyshev_radio)
+        controls_layout.addWidget(self.bessel_radio)
+        
+        # Pulsante per aggiornare il grafico
+        update_button = QPushButton("Aggiorna Grafico")
+        update_button.clicked.connect(self.update_plot)
+        controls_layout.addWidget(update_button)
+        
+        # Pulsante per generare il file filtrato
+        generate_button = QPushButton("Genera File FDX-B Filtrato")
+        generate_button.clicked.connect(self.generate_filtered_signal)
+        controls_layout.addWidget(generate_button)
+        
+        controls_layout.addStretch()
+        layout.addWidget(controls_widget)
+        
+        # Figura Matplotlib
+        self.figure, self.ax = plt.subplots(2, 1, figsize=(8, 6))
+        self.canvas = FigureCanvas(self.figure)
+        layout.addWidget(self.canvas)
+        
+        # Inizializza il grafico
+        self.update_plot()
+    
+    def get_filter_response(self, filter_type, order, cutoff_freq, ripple=None):
+        freqs = np.logspace(1, 6, 1000)
+        w = 2 * np.pi * freqs / cutoff_freq
+        if filter_type == 'RC':
+            b = [1]
+            a = [1, 1]
+        elif filter_type == 'Butterworth':
+            b, a = signal.butter(order, 1, analog=True)
+        elif filter_type == 'Chebyshev':
+            b, a = signal.cheby1(order, ripple, 1, analog=True)
+        elif filter_type == 'Bessel':
+            b, a = signal.bessel(order, 1, analog=True)
+        else:
+            raise ValueError("Tipo di filtro non riconosciuto")
+        
+        w, h = signal.freqs(b, a, worN=w)
+        magnitude = 20 * np.log10(np.abs(h))
+        phase = np.unwrap(np.angle(h)) * 180 / np.pi
+        return freqs, magnitude, phase
+    
+    def update_plot(self):
+        try:
+            cutoff_freq = float(self.cutoff_freq_input.text())
+            order = int(self.order_input.text())
+            ripple = float(self.ripple_input.text())
+            
+            self.ax[0].clear()
+            self.ax[1].clear()
+            
+            # Lista dei filtri
+            filters = [
+                ('RC', 1, None, 'b', 'RC'),
+                ('Butterworth', order, None, 'g', f'Butterworth (ord={order})'),
+                ('Chebyshev', order, ripple, 'r', f'Chebyshev (ord={order}, ripple={ripple} dB)'),
+                ('Bessel', order, None, 'm', f'Bessel (ord={order})')
+            ]
+            
+            # Plotta ogni filtro
+            for filter_type, filt_order, filt_ripple, color, label in filters:
+                freqs, magnitude, phase = self.get_filter_response(filter_type, filt_order, cutoff_freq, filt_ripple)
+                self.ax[0].semilogx(freqs, magnitude, color, label=label)
+                self.ax[1].semilogx(freqs, phase, color, label=label)
+            
+            self.ax[0].set_title(f"Funzioni di Trasferimento - fc={cutoff_freq} Hz")
+            self.ax[0].set_xlabel("Frequenza (Hz)")
+            self.ax[0].set_ylabel("Magnitudine (dB)")
+            self.ax[0].grid(True, which="both", ls="--")
+            self.ax[0].axvline(cutoff_freq, color='k', linestyle='--', label="Frequenza di taglio")
+            self.ax[0].legend()
+            
+            self.ax[1].set_xlabel("Frequenza (Hz)")
+            self.ax[1].set_ylabel("Fase (gradi)")
+            self.ax[1].grid(True, which="both", ls="--")
+            self.ax[1].axvline(cutoff_freq, color='k', linestyle='--')
+            self.ax[1].legend()
+            
+            self.figure.tight_layout()
+            self.canvas.draw()
+        
+        except ValueError as e:
+            print(f"Errore nei parametri: {e}")
+    
+    def generate_filtered_signal(self):
+        try:
+            cutoff_freq = float(self.cutoff_freq_input.text())
+            order = int(self.order_input.text())
+            ripple = float(self.ripple_input.text())
+            
+            # Determina il filtro selezionato
+            if self.rc_radio.isChecked():
+                filter_type = 'RC'
+            elif self.butterworth_radio.isChecked():
+                filter_type = 'Butterworth'
+            elif self.chebyshev_radio.isChecked():
+                filter_type = 'Chebyshev'
+            elif self.bessel_radio.isChecked():
+                filter_type = 'Bessel'
+            else:
+                filter_type = 'RC'
+            
+            # Genera il segnale FDX-B
+            signal_data, fs = create_fdx_b_signal()
+            
+            # Applica il filtro
+            apply_filter(signal_data, fs, filter_type, order, cutoff_freq, ripple)
+            
+        except ValueError as e:
+            print(f"Errore nella generazione del segnale: {e}")
+
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    window = FilterGUI()
+    window.show()
+    sys.exit(app.exec_())

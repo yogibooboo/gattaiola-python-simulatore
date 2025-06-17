@@ -169,7 +169,8 @@ def media_correlazione_32(segnale, larghezza_finestra=8, lunghezza_correlazione=
                         stato_decobytes = 0
                     elif newbit != 1:
                         byte_count = (total_bits - last_sync_bit) // 9  # Calcola byte
-                        log_message(f"Perso sync at: {i-24} (bit: {total_bits}, byte: {byte_count})")
+                        hex_bytes_parziali = [f"{byte:02X}" for byte in bytes32[:contatore_bytes]]
+                        log_message(f"Perso sync at: {i-24} (bit: {total_bits}, byte: {byte_count}, byte acquisiti: [{', '.join(hex_bytes_parziali)}])")
                         contatore_zeri = 0
                         contatore_bits = 0
                         stato_decobytes = 0
@@ -180,6 +181,7 @@ def media_correlazione_32(segnale, larghezza_finestra=8, lunghezza_correlazione=
     
     print(f"Debug: Segnale filtrato restituito, lunghezza: {len(segnale_filtrato32)}")
     return segnale_filtrato32, correlazione32, picchi32, distanze, bits32, bytes32
+
 def analizza_con_buffer_scorrevole(percorso_file, status_label, log_callback=None):
     print("Debug: Inizio analizza_con_buffer_scorrevole...")
     periodo_campionamento = 1 / 134.2e3 * 1e6

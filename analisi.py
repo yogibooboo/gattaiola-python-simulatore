@@ -287,7 +287,7 @@ status_label = tk.Label(window, text="Stato: Inattivo")
 status_label.grid(row=6, column=1, padx=5, pady=5)
 
 tk.Label(window, text="Risultato Decodifica:").grid(row=7, column=0, padx=5, pady=5, sticky="w")
-bits_text = tk.Text(window, height=5, width=60)
+bits_text = tk.Text(window, height=10, width=60)
 bits_text.grid(row=8, column=0, columnspan=3, padx=5, pady=5)
 
 tk.Label(window, text="Byte e CRC:").grid(row=9, column=0, padx=5, pady=5, sticky="w")

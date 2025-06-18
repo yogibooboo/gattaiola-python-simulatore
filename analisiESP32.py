@@ -28,7 +28,7 @@ def media_correlazione_32(segnale, larghezza_finestra=8, lunghezza_correlazione=
     distanze = []
     bits32 = []
     bytes32 = []
-    soglia_mezzo_bit = 22
+    soglia_mezzo_bit = 24
     stato_decodifica = 0
     contatore_zeri = 0
     contatore_bytes = 0
@@ -122,19 +122,26 @@ def media_correlazione_32(segnale, larghezza_finestra=8, lunghezza_correlazione=
                     newbit = 1
                     numbit = 1
                 else:
-                    ultima_distanza = nuova_distanza
                     stato_decodifica = 1
             elif stato_decodifica == 1:
                 if nuova_distanza < soglia_mezzo_bit:
-                    bits32.append((0, i-24))
-                    newbit = 0
-                    numbit = 1
+                    # PRIMA PROVA: se la somma delle ultime due distanze è maggiore di 32+8 allora il primo era un 1 e il secondo è l'inizio di uno zero
+                    if len(distanze) >= 2 and (nuova_distanza + distanze[-2]) >= 46:
+                        bits32.append((0, i-24))
+                        newbit = 1
+                        numbit = 1
+                        stato_decodifica = 1
+                    else:
+                        bits32.append((0, i-24))
+                        newbit = 0
+                        numbit = 1
+                        stato_decodifica = 0
                 else:
                     bits32.append((1, i-24-nuova_distanza))
                     bits32.append((1, i-24))
                     newbit = 1
                     numbit = 2
-                stato_decodifica = 0
+                    stato_decodifica = 0
 
         while numbit > 0:
             total_bits += 1  # Incrementa bit totali

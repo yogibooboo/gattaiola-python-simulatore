@@ -98,6 +98,8 @@ def correlazione_con_sequenza_nota(percorso_file, bytes_noti, status_label, ax1,
         ylim_corr = None
         previous_offset = offset
         previous_idx_max = idx_max
+        previous_mostra = 0  # Traccia l'ultima modalità visualizzata (0: Segnale, 1: Correlazione ESP32)
+        reset_xlim = False  # Flag per forzare il reset di xlim
 
         if inizio >= 0 and fine <= len(segnale):
             segmento_segnale = segnale[inizio:fine]
@@ -105,8 +107,9 @@ def correlazione_con_sequenza_nota(percorso_file, bytes_noti, status_label, ax1,
             segmento_segnale = segmento_segnale / norm_segmento if norm_segmento != 0 else segmento_segnale
 
             def aggiorna_grafico(offset_attuale):
-                nonlocal current_peak_idx, idx_max, offset, previous_offset, xlim, ylim_segnale, ylim_corr, previous_idx_max
-                print(f"Debug: Aggiorna grafico, modalità: {'Segnale' if mostra_var.get() == 0 else 'Correlazione ESP32'}, offset: {offset_attuale}, idx_max: {idx_max}")
+                nonlocal current_peak_idx, idx_max, offset, previous_offset, xlim, ylim_segnale, ylim_corr, previous_idx_max, previous_mostra, reset_xlim
+                current_mostra = mostra_var.get()
+                print(f"Debug: Aggiorna grafico, modalità: {'Segnale' if current_mostra == 0 else 'Correlazione ESP32'}, offset: {offset_attuale}, idx_max: {idx_max}, reset_xlim: {reset_xlim}")
                 # Salva i limiti correnti
                 current_xlim = ax_confronto.get_xlim()
                 current_ylim = ax_confronto.get_ylim()
@@ -124,39 +127,45 @@ def correlazione_con_sequenza_nota(percorso_file, bytes_noti, status_label, ax1,
                 indici_assoluti = np.arange(inizio_offset, fine_offset)
 
                 # Gestisci i limiti x
-                if current_xlim != (0, 1) and previous_idx_max == idx_max:
-                    # Preserva lo zoom traslando i limiti x
+                if not reset_xlim and current_xlim != (0, 1) and previous_idx_max == idx_max and (offset_attuale != 0 or current_mostra != previous_mostra):
+                    # Preserva lo zoom per Sposta Destra/Sinistra o cambio modalità
                     zoom_width = current_xlim[1] - current_xlim[0]
-                    delta_offset = offset_attuale - previous_offset
-                    new_xlim = (current_xlim[0] + delta_offset, current_xlim[1] + delta_offset)
+                    if offset_attuale != previous_offset:
+                        # Trasla per Sposta Destra/Sinistra
+                        delta_offset = offset_attuale - previous_offset
+                        new_xlim = (current_xlim[0] + delta_offset, current_xlim[1] + delta_offset)
+                    else:
+                        # Mantieni i limiti x per cambio modalità
+                        new_xlim = current_xlim
                     # Limita i nuovi limiti x per non uscire dal segnale
                     new_xlim = (max(0, new_xlim[0]), min(len(segnale), new_xlim[0] + zoom_width))
                     xlim = new_xlim
                 else:
-                    # Reset xlim al nuovo intervallo per cambio picco o inizio
+                    # Reset xlim al nuovo intervallo per cambio picco, imposta inizio o inizializzazione
                     xlim = (inizio_offset, fine_offset)
-                
+                    reset_xlim = False  # Resetta il flag dopo l'uso
+
                 # Salva i limiti y se aggiornati
-                if current_ylim != (0, 1) and mostra_var.get() == 0:
+                if current_ylim != (0, 1) and current_mostra == 0:
                     ylim_segnale = current_ylim
 
-                print(f"Debug: Limiti x: {xlim}")
+                print(f"Debug: Limiti x impostati: {xlim}")
 
-                # Rimuovi eventuali assi secondari e resetta l’asse principale
+                # Rimuovi eventuali assi secondari e resetta l'asse principale
                 for ax in ax_confronto.figure.axes:
                     if ax != ax_confronto:
                         ax.remove()
                 ax_confronto.clear()
 
-                if mostra_var.get() == 0:  # Modalità Segnale
+                if current_mostra == 0:  # Modalità Segnale
                     print("Debug: Plottando modalità Segnale...")
                     ax_confronto.plot(indici_assoluti, segmento_segnale_offset, label="Segnale di ingresso", color='blue', alpha=0.7)
                     ax_confronto.plot(indici_assoluti, riferimento[:len(indici_assoluti)], label="Segnale di riferimento", color='orange', alpha=0.7)
                     for i in range(0, len(indici_assoluti), 32):
-                        ax_confronto.axvline(indici_assoluti[i], color='gray', linestyle='--', alpha=0.5)
+                        ax_confronto.axvline(inizio_offset + i, color='gray', linestyle='--', linewidth=0.5)
                     ax_confronto.set_title(f"Confronto Segnale (inizio: {inizio_offset})")
                     ax_confronto.set_ylabel("Ampiezza")
-                    # Imposta limiti y dinamici
+                    # Imposta limiti y dinamici se necessario
                     if np.any(segmento_segnale_offset):
                         segn_min, segn_max = np.min(segmento_segnale_offset), np.max(segmento_segnale_offset)
                         ylim_segnale = (segn_min - 0.1 * (segn_max - segn_min), segn_max + 0.1 * (segn_max - segn_min))
@@ -207,6 +216,7 @@ def correlazione_con_sequenza_nota(percorso_file, bytes_noti, status_label, ax1,
                 # Ripristina o aggiorna lo zoom
                 ax_confronto.set_xlim(xlim)
                 print(f"Debug: Limiti x impostati: {xlim}")
+                previous_mostra = current_mostra  # Aggiorna l'ultima modalità
                 canvas.draw()
 
             def sposta_sinistra():
@@ -222,35 +232,38 @@ def correlazione_con_sequenza_nota(percorso_file, bytes_noti, status_label, ax1,
                 aggiorna_grafico(offset)
 
             def seleziona_picco_precedente():
-                nonlocal current_peak_idx, idx_max, offset, previous_offset, previous_idx_max
+                nonlocal current_peak_idx, idx_max, offset, previous_offset, previous_idx_max, reset_xlim
                 if current_peak_idx > 0:
                     current_peak_idx -= 1
                     idx_max = risultati[current_peak_idx][1]
                     offset = 0
                     previous_offset = 0
                     previous_idx_max = idx_max
+                    reset_xlim = True  # Forza il reset di xlim
                     print(f"Debug: Picco precedente, idx_max: {idx_max}")
                     aggiorna_grafico(offset)
 
             def seleziona_picco_successivo():
-                nonlocal current_peak_idx, idx_max, offset, previous_offset, previous_idx_max
+                nonlocal current_peak_idx, idx_max, offset, previous_offset, previous_idx_max, reset_xlim
                 if current_peak_idx < len(risultati) - 1:
                     current_peak_idx += 1
                     idx_max = risultati[current_peak_idx][1]
                     offset = 0
                     previous_offset = 0
                     previous_idx_max = idx_max
+                    reset_xlim = True  # Forza il reset di xlim
                     print(f"Debug: Picco successivo, idx_max: {idx_max}")
                     aggiorna_grafico(offset)
 
             def imposta_inizio(valore):
-                nonlocal offset, idx_max, previous_offset, previous_idx_max
+                nonlocal offset, idx_max, previous_offset, previous_idx_max, reset_xlim
                 try:
                     nuovo_inizio = int(valore)
                     if 0 <= nuovo_inizio <= len(segnale) - lunghezza_riferimento:
                         offset = nuovo_inizio - (idx_max - lunghezza_riferimento)
                         previous_offset = offset
                         previous_idx_max = idx_max
+                        reset_xlim = True  # Forza il reset di xlim
                         print(f"Debug: Imposta inizio, nuovo_inizio: {nuovo_inizio}, offset: {offset}")
                         aggiorna_grafico(offset)
                 except ValueError:
@@ -305,7 +318,13 @@ def correlazione_con_sequenza_nota(percorso_file, bytes_noti, status_label, ax1,
             max_conf = abs(risultati[0][0])
             risultato_text.insert(tk.END, f"Confidenza massima: {max_conf:.3f}\n")
             for conf, idx, bit in risultati:
-                risultato_text.insert(tk.END, f"Confidenza {conf:.3f} al bit {bit} ({idx})\n")
+                inizio_bit = bit - 101
+                inizio_campione = idx - 3232
+                inizio_bit_str = str(inizio_bit) if inizio_bit >= 0 else "nv"
+                inizio_campione_str = str(inizio_campione) if inizio_campione >= 0 else "nv"
+                risultato_text.insert(tk.END, f"Confidenza {conf:.3f} al bit {bit} ({idx}), inizio {inizio_bit_str} ({inizio_campione_str})\n")
+
+                #risultato_text.insert(tk.END, f"Confidenza {conf:.3f} al bit {bit} ({idx})\n")
         else:
             risultato_text.insert(tk.END, "Nessuna corrispondenza trovata\n")
 
@@ -320,6 +339,6 @@ def correlazione_con_sequenza_nota(percorso_file, bytes_noti, status_label, ax1,
         status_label.config(text="Stato: Correlazione completata")
     except Exception as e:
         print(f"Errore in correlazione_con_sequenza_nota: {e}")
-        status_label.config(text=f"Erre: {e}")
+        status_label.config(text=f"Errore: {e}")
         risultato_text.delete(1.0, tk.END)
         risultato_text.insert(tk.END, f"Errore: {e}\n")

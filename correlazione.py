@@ -107,13 +107,9 @@ def correlazione_con_sequenza_nota(percorso_file, bytes_noti, status_label, ax1,
             def aggiorna_grafico(offset_attuale):
                 nonlocal current_peak_idx, idx_max, offset, previous_offset, xlim, ylim_segnale, ylim_corr, previous_idx_max
                 print(f"Debug: Aggiorna grafico, modalità: {'Segnale' if mostra_var.get() == 0 else 'Correlazione ESP32'}, offset: {offset_attuale}, idx_max: {idx_max}")
-                # Salva i limiti correnti per mantenere lo zoom solo se non è cambiato idx_max
+                # Salva i limiti correnti
                 current_xlim = ax_confronto.get_xlim()
                 current_ylim = ax_confronto.get_ylim()
-                if current_xlim != (0, 1) and previous_idx_max == idx_max:
-                    xlim = current_xlim
-                if current_ylim != (0, 1) and mostra_var.get() == 0:
-                    ylim_segnale = current_ylim
 
                 # Calcola il nuovo segmento
                 inizio_offset = max(0, idx_max - lunghezza_riferimento + offset_attuale)
@@ -127,10 +123,26 @@ def correlazione_con_sequenza_nota(percorso_file, bytes_noti, status_label, ax1,
                 print(f"Debug: Segmento segnale offset, min: {np.min(segmento_segnale_offset)}, max: {np.max(segmento_segnale_offset)}")
                 indici_assoluti = np.arange(inizio_offset, fine_offset)
 
-                # Aggiorna xlim per riflettere il nuovo intervallo
-                xlim = (inizio_offset, fine_offset)
+                # Gestisci i limiti x
+                if current_xlim != (0, 1) and previous_idx_max == idx_max:
+                    # Preserva lo zoom traslando i limiti x
+                    zoom_width = current_xlim[1] - current_xlim[0]
+                    delta_offset = offset_attuale - previous_offset
+                    new_xlim = (current_xlim[0] + delta_offset, current_xlim[1] + delta_offset)
+                    # Limita i nuovi limiti x per non uscire dal segnale
+                    new_xlim = (max(0, new_xlim[0]), min(len(segnale), new_xlim[0] + zoom_width))
+                    xlim = new_xlim
+                else:
+                    # Reset xlim al nuovo intervallo per cambio picco o inizio
+                    xlim = (inizio_offset, fine_offset)
+                
+                # Salva i limiti y se aggiornati
+                if current_ylim != (0, 1) and mostra_var.get() == 0:
+                    ylim_segnale = current_ylim
 
-                # Rimuovi eventuali assi secondari e resetta l'asse principale
+                print(f"Debug: Limiti x: {xlim}")
+
+                # Rimuovi eventuali assi secondari e resetta l’asse principale
                 for ax in ax_confronto.figure.axes:
                     if ax != ax_confronto:
                         ax.remove()
@@ -141,10 +153,10 @@ def correlazione_con_sequenza_nota(percorso_file, bytes_noti, status_label, ax1,
                     ax_confronto.plot(indici_assoluti, segmento_segnale_offset, label="Segnale di ingresso", color='blue', alpha=0.7)
                     ax_confronto.plot(indici_assoluti, riferimento[:len(indici_assoluti)], label="Segnale di riferimento", color='orange', alpha=0.7)
                     for i in range(0, len(indici_assoluti), 32):
-                        ax_confronto.axvline(inizio_offset + i, color='gray', linestyle='--', linewidth=0.5)
+                        ax_confronto.axvline(indici_assoluti[i], color='gray', linestyle='--', alpha=0.5)
                     ax_confronto.set_title(f"Confronto Segnale (inizio: {inizio_offset})")
                     ax_confronto.set_ylabel("Ampiezza")
-                    # Imposta limiti y dinamici se necessario
+                    # Imposta limiti y dinamici
                     if np.any(segmento_segnale_offset):
                         segn_min, segn_max = np.min(segmento_segnale_offset), np.max(segmento_segnale_offset)
                         ylim_segnale = (segn_min - 0.1 * (segn_max - segn_min), segn_max + 0.1 * (segn_max - segn_min))
@@ -308,6 +320,6 @@ def correlazione_con_sequenza_nota(percorso_file, bytes_noti, status_label, ax1,
         status_label.config(text="Stato: Correlazione completata")
     except Exception as e:
         print(f"Errore in correlazione_con_sequenza_nota: {e}")
-        status_label.config(text=f"Errore: {e}")
+        status_label.config(text=f"Erre: {e}")
         risultato_text.delete(1.0, tk.END)
         risultato_text.insert(tk.END, f"Errore: {e}\n")

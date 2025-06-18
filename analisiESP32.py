@@ -28,7 +28,7 @@ def media_correlazione_32(segnale, larghezza_finestra=8, lunghezza_correlazione=
     distanze = []
     bits32 = []
     bytes32 = []
-    soglia_mezzo_bit = 24
+    soglia_mezzo_bit = 22
     stato_decodifica = 0
     contatore_zeri = 0
     contatore_bytes = 0

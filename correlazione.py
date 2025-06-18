@@ -68,7 +68,8 @@ def correlazione_con_sequenza_nota(percorso_file, bytes_noti, status_label, ax1,
             segnale = np.array(segnale_filtrato, dtype=np.float64)
 
         segnale = segnale - np.mean(segnale)
-        segnale = segnale / np.linalg.norm(segnale) if np.linalg.norm(segnale) != 0 else segnale
+        norm_segnale = np.linalg.norm(segnale)
+        segnale = segnale / norm_segnale if norm_segnale != 0 else segnale
 
         bits = genera_sequenza_bit(bytes_noti)
         riferimento = genera_segnale_riferimento(bits)
@@ -93,41 +94,70 @@ def correlazione_con_sequenza_nota(percorso_file, bytes_noti, status_label, ax1,
         fine = inizio + lunghezza_riferimento
 
         xlim = (inizio, fine)
-        ylim = (-1.5, 1.5)
+        ylim_segnale = (-1.5, 1.5)
         ylim_corr = None
         previous_offset = offset
         previous_idx_max = idx_max
 
         if inizio >= 0 and fine <= len(segnale):
             segmento_segnale = segnale[inizio:fine]
-            segmento_segnale = segmento_segnale / np.linalg.norm(segmento_segnale) if np.linalg.norm(segmento_segnale) != 0 else segmento_segnale
+            norm_segmento = np.linalg.norm(segmento_segnale)
+            segmento_segnale = segmento_segnale / norm_segmento if norm_segmento != 0 else segmento_segnale
 
             def aggiorna_grafico(offset_attuale):
-                nonlocal current_peak_idx, idx_max, offset, previous_offset, xlim, ylim, ylim_corr, previous_idx_max
+                nonlocal current_peak_idx, idx_max, offset, previous_offset, xlim, ylim_segnale, ylim_corr, previous_idx_max
+                print(f"Debug: Aggiorna grafico, modalità: {'Segnale' if mostra_var.get() == 0 else 'Correlazione ESP32'}, offset: {offset_attuale}, idx_max: {idx_max}")
+                # Salva i limiti correnti per mantenere lo zoom solo se non è cambiato idx_max
                 current_xlim = ax_confronto.get_xlim()
                 current_ylim = ax_confronto.get_ylim()
-                if current_ylim != (0, 1):
-                    ylim = current_ylim
+                if current_xlim != (0, 1) and previous_idx_max == idx_max:
+                    xlim = current_xlim
+                if current_ylim != (0, 1) and mostra_var.get() == 0:
+                    ylim_segnale = current_ylim
+
+                # Calcola il nuovo segmento
                 inizio_offset = max(0, idx_max - lunghezza_riferimento + offset_attuale)
                 fine_offset = min(inizio_offset + lunghezza_riferimento, len(segnale))
                 segmento_segnale_offset = segnale[inizio_offset:fine_offset]
-                segmento_segnale_offset = segmento_segnale_offset / np.linalg.norm(segmento_segnale_offset) if np.linalg.norm(segmento_segnale_offset) != 0 else segmento_segnale_offset
-                ax_confronto.clear()
+                norm_segmento_offset = np.linalg.norm(segmento_segnale_offset)
+                if norm_segmento_offset != 0:
+                    segmento_segnale_offset = segmento_segnale_offset / norm_segmento_offset
+                else:
+                    print("Debug: Norm segmento_segnale_offset è zero, mantengo dati non normalizzati")
+                print(f"Debug: Segmento segnale offset, min: {np.min(segmento_segnale_offset)}, max: {np.max(segmento_segnale_offset)}")
                 indici_assoluti = np.arange(inizio_offset, fine_offset)
+
+                # Aggiorna xlim per riflettere il nuovo intervallo
+                xlim = (inizio_offset, fine_offset)
+
+                # Rimuovi eventuali assi secondari e resetta l'asse principale
+                for ax in ax_confronto.figure.axes:
+                    if ax != ax_confronto:
+                        ax.remove()
+                ax_confronto.clear()
+
                 if mostra_var.get() == 0:  # Modalità Segnale
+                    print("Debug: Plottando modalità Segnale...")
                     ax_confronto.plot(indici_assoluti, segmento_segnale_offset, label="Segnale di ingresso", color='blue', alpha=0.7)
-                    ax_confronto.plot(indici_assoluti, riferimento[:len(indici_assoluti)], label="Segnale di riferimento", color='red', alpha=0.7)
+                    ax_confronto.plot(indici_assoluti, riferimento[:len(indici_assoluti)], label="Segnale di riferimento", color='orange', alpha=0.7)
                     for i in range(0, len(indici_assoluti), 32):
                         ax_confronto.axvline(inizio_offset + i, color='gray', linestyle='--', linewidth=0.5)
                     ax_confronto.set_title(f"Confronto Segnale (inizio: {inizio_offset})")
                     ax_confronto.set_ylabel("Ampiezza")
-                    ax_confronto.legend()
+                    # Imposta limiti y dinamici se necessario
+                    if np.any(segmento_segnale_offset):
+                        segn_min, segn_max = np.min(segmento_segnale_offset), np.max(segmento_segnale_offset)
+                        ylim_segnale = (segn_min - 0.1 * (segn_max - segn_min), segn_max + 0.1 * (segn_max - segn_min))
+                    ax_confronto.set_ylim(ylim_segnale)
+                    print(f"Debug: Limiti y Segnale: {ylim_segnale}")
                 else:  # Modalità Correlazione ESP32
+                    print("Debug: Plottando modalità Correlazione ESP32...")
                     correlazione32 = analisiESP32.get_correlazione32()
                     picchi32 = analisiESP32.get_picchi32()
                     bits32 = analisiESP32.get_bits32()
                     if correlazione32 is not None and picchi32 is not None and bits32 is not None:
                         segmento_correlazione = correlazione32[inizio_offset:fine_offset]
+                        print(f"Debug: Segmento correlazione, min: {np.min(segmento_correlazione)}, max: {np.max(segmento_correlazione)}")
                         ax_riferimento = ax_confronto.twinx()
                         ax_confronto.plot(indici_assoluti, segmento_correlazione, label="Correlazione", color='green')
                         picchi_visibili = [p for p in picchi32 if inizio_offset <= p < fine_offset]
@@ -141,12 +171,15 @@ def correlazione_con_sequenza_nota(percorso_file, bytes_noti, status_label, ax1,
                             ax_confronto.plot(bit0_pos, bit0_val, "o", color='green', label='Bit 0', markersize=8)
                         if bit1_pos:
                             ax_confronto.plot(bit1_pos, bit1_val, "o", color='red', label='Bit 1', markersize=8)
-                        ax_riferimento.plot(indici_assoluti, riferimento[:len(indici_assoluti)], label="Segnale di riferimento", color='red', alpha=0.7)
+                        ax_riferimento.plot(indici_assoluti, riferimento[:len(indici_assoluti)], label="Segnale di riferimento", color='orange', alpha=0.7)
                         ax_confronto.set_ylabel("Correlazione", color='green')
-                        ax_riferimento.set_ylabel("Ampiezza Riferimento", color='red')
-                        if segmento_correlazione.size > 0:
+                        ax_riferimento.set_ylabel("Ampiezza Riferimento", color='orange')
+                        if segmento_correlazione.size > 0 and np.any(segmento_correlazione):
                             corr_min, corr_max = np.min(segmento_correlazione), np.max(segmento_correlazione)
                             ylim_corr = (corr_min - 0.1 * (corr_max - corr_min), corr_max + 0.1 * (corr_max - corr_min))
+                            ax_confronto.set_ylim(ylim_corr)
+                        else:
+                            ylim_corr = (-1, 1)
                             ax_confronto.set_ylim(ylim_corr)
                         ax_riferimento.set_ylim(-1.5, 1.5)
                         lines1, labels1 = ax_confronto.get_legend_handles_labels()
@@ -157,15 +190,11 @@ def correlazione_con_sequenza_nota(percorso_file, bytes_noti, status_label, ax1,
                         ax_confronto.text(0.5, 0.5, "Dati ESP32 non disponibili", ha='center', va='center')
                         ax_confronto.set_title(f"Correlazione ESP32 (inizio: {inizio_offset})")
                         ax_confronto.set_ylabel("Correlazione")
+
                 ax_confronto.set_xlabel("Campioni")
-                new_xlim = (inizio_offset, fine_offset) if idx_max != previous_idx_max else xlim
-                ax_confronto.set_xlim(new_xlim)
-                xlim = ax_confronto.get_xlim()
-                if mostra_var.get() == 0:
-                    ylim = ax_confronto.get_ylim()
-                else:
-                    if correlazione32 is not None:
-                        ylim_corr = ax_confronto.get_ylim()
+                # Ripristina o aggiorna lo zoom
+                ax_confronto.set_xlim(xlim)
+                print(f"Debug: Limiti x impostati: {xlim}")
                 canvas.draw()
 
             def sposta_sinistra():
@@ -188,6 +217,7 @@ def correlazione_con_sequenza_nota(percorso_file, bytes_noti, status_label, ax1,
                     offset = 0
                     previous_offset = 0
                     previous_idx_max = idx_max
+                    print(f"Debug: Picco precedente, idx_max: {idx_max}")
                     aggiorna_grafico(offset)
 
             def seleziona_picco_successivo():
@@ -198,6 +228,7 @@ def correlazione_con_sequenza_nota(percorso_file, bytes_noti, status_label, ax1,
                     offset = 0
                     previous_offset = 0
                     previous_idx_max = idx_max
+                    print(f"Debug: Picco successivo, idx_max: {idx_max}")
                     aggiorna_grafico(offset)
 
             def imposta_inizio(valore):
@@ -208,6 +239,7 @@ def correlazione_con_sequenza_nota(percorso_file, bytes_noti, status_label, ax1,
                         offset = nuovo_inizio - (idx_max - lunghezza_riferimento)
                         previous_offset = offset
                         previous_idx_max = idx_max
+                        print(f"Debug: Imposta inizio, nuovo_inizio: {nuovo_inizio}, offset: {offset}")
                         aggiorna_grafico(offset)
                 except ValueError:
                     pass

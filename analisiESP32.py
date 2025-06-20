@@ -123,14 +123,16 @@ def media_correlazione_32(segnale, larghezza_finestra=8, lunghezza_correlazione=
                     numbit = 1
                 else:
                     stato_decodifica = 1
-            elif stato_decodifica == 1:
-                if nuova_distanza < soglia_mezzo_bit:
+            elif stato_decodifica ==1:    #2006   == 1: potrebbe essre 2 in caso di doppia correzione
+                if True:   #2006 nuova_distanza < soglia_mezzo_bit:
                     # PRIMA PROVA: se la somma delle ultime due distanze è maggiore di 32+8 allora il primo era un 1 e il secondo è l'inizio di uno zero
                     if len(distanze) >= 2 and (nuova_distanza + distanze[-2]) >= 46:
-                        bits32.append((0, i-24))
+                    
+                        bits32.append((1, i-24))
                         newbit = 1
                         numbit = 1
-                        stato_decodifica = 1
+                        stato_decodifica = 2 #2006 stato_decodifica = 2
+                        #aggiusta
                     else:
                         bits32.append((0, i-24))
                         newbit = 0
@@ -142,6 +144,12 @@ def media_correlazione_32(segnale, larghezza_finestra=8, lunghezza_correlazione=
                     newbit = 1
                     numbit = 2
                     stato_decodifica = 0
+            elif stato_decodifica ==2:    #2006  potrebbe essre 2 in caso di doppia correzione
+                bits32.append((0, i-24))
+                newbit = 0
+                numbit = 1
+                stato_decodifica = 0
+ 
 
         while numbit > 0:
             total_bits += 1  # Incrementa bit totali
@@ -149,7 +157,7 @@ def media_correlazione_32(segnale, larghezza_finestra=8, lunghezza_correlazione=
                 if newbit == 0:
                     contatore_zeri += 1
                 else:
-                    if contatore_zeri >= 10:
+                    if contatore_zeri == 10: #2806 contatore_zeri >= 10:
                         stato_decobytes = 1
                         contatore_bytes = 0
                         contatore_bits = 0

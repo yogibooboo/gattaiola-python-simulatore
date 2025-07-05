@@ -125,14 +125,19 @@ def media_correlazione_32(segnale, larghezza_finestra=8, lunghezza_correlazione=
                     stato_decodifica = 1
             elif stato_decodifica ==1:    #2006   == 1: potrebbe essre 2 in caso di doppia correzione
                 if True:   #2006 nuova_distanza < soglia_mezzo_bit:
-                    # PRIMA PROVA: se la somma delle ultime due distanze è maggiore di 32+8 allora il primo era un 1 e il secondo è l'inizio di uno zero
-                    if len(distanze) >= 2 and (nuova_distanza + distanze[-2]) >= 46:
-                    
-                        bits32.append((1, i-24))
+                    # PRIMA PROVA: se la somma delle ultime due distanze è maggiore di 42 allora il primo era un 1 e il secondo è l'inizio di uno zero
+                    if len(distanze) >= 2 and (nuova_distanza + distanze[-2]) >= 42:    #2006 era 46
+                    #if len(distanze) >= 2 and (nuova_distanza + distanze[-2]) >= 42 and (distanze[-2]-nuova_distanza)>2: 
+                                               
+                        bits32.append((1, i-24-nuova_distanza))
                         newbit = 1
                         numbit = 1
-                        stato_decodifica = 2 #2006 stato_decodifica = 2
-                        #aggiusta
+                        stato_decodifica = 2 #2006 stato_decodifica = 1
+                        if len(distanze) >= 2 and (nuova_distanza + distanze[-2]) >= 52:    #2106 ma se addirittura supera 52 erano 2 uni
+                            bits32.append((1, i-24))
+                            newbit = 1
+                            numbit = 2
+                            stato_decodifica = 0
                     else:
                         bits32.append((0, i-24))
                         newbit = 0
@@ -157,7 +162,7 @@ def media_correlazione_32(segnale, larghezza_finestra=8, lunghezza_correlazione=
                 if newbit == 0:
                     contatore_zeri += 1
                 else:
-                    if contatore_zeri == 10: #2806 contatore_zeri >= 10:
+                    if contatore_zeri == 10: #2006 contatore_zeri >= 10:
                         stato_decobytes = 1
                         contatore_bytes = 0
                         contatore_bits = 0
@@ -237,7 +242,7 @@ def media_correlazione_32(segnale, larghezza_finestra=8, lunghezza_correlazione=
     print(f"Debug: Segnale filtrato restituito, lunghezza: {len(segnale_filtrato32)}")
     return segnale_filtrato32, correlazione32, picchi32, distanze, bits32, bytes32
 
-def analizza_con_buffer_scorrevole(percorso_file, status_label, log_callback=None):
+def analizza_con_buffer_scorrevole(percorso_file, status_label, log_callback=None, somma_offset_4096=False):
     print("Debug: Inizio analizza_con_buffer_scorrevole...")
     periodo_campionamento = 1 / 134.2e3 * 1e6
     durata_bit = 1 / (134.2e3 / 32) * 1e6
@@ -246,6 +251,13 @@ def analizza_con_buffer_scorrevole(percorso_file, status_label, log_callback=Non
         dati = f.read()
     segnale = np.array(struct.unpack("<" + "h" * (len(dati) // 2), dati))
     print(f"Debug: Segnale letto, lunghezza: {len(segnale)}")
+    
+    # Applica la somma con offset 4096 se richiesto
+    if somma_offset_4096 and len(segnale) >= 4096:
+        for i in range(len(segnale) - 4080):
+            segnale[i] += segnale[i + 4080]
+        print("Debug: Somma con offset 4096 applicata al buffer")
+    
     segnale_filtrato32, correlazione32, picchi32, distanze32, bits32, bytes32 = media_correlazione_32(
         segnale, log_callback=log_callback)
     visualizza_analisi_esp32(segnale, correlazione32, picchi32, distanze32, bits32, bytes32, campioni_per_bit, segnale_filtrato32)

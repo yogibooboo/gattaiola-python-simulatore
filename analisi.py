@@ -201,7 +201,7 @@ def visualizza_file(percorso_file_var, status_label, media_scorrevole_var, ax1, 
 
     status_label.config(text="Stato: Visualizzazione e decodifica completate")
 
-def analizza_file(percorso_file_var, status_label, bits_text):
+def analizza_file(percorso_file_var, status_label, bits_text, somma_offset_4096=False):
     print("Debug: Inizio analizza_file...")
     percorso_file = percorso_file_var.get()
     print(f"Debug: Percorso file: '{percorso_file}'")
@@ -212,7 +212,7 @@ def analizza_file(percorso_file_var, status_label, bits_text):
     status_label.config(text="Stato: Analisi ESP32 in corso...")
     bits_text.delete(1.0, tk.END)
     try:
-        segnale_filtrato = analisiESP32.analizza_con_buffer_scorrevole(percorso_file, status_label, lambda msg: bits_text.insert(tk.END, msg + "\n"))
+        segnale_filtrato = analisiESP32.analizza_con_buffer_scorrevole(percorso_file, status_label, lambda msg: bits_text.insert(tk.END, msg + "\n"), somma_offset_4096=somma_offset_4096)
         print(f"Debug: analizza_con_buffer_scorrevole completata, segnale_filtrato: {segnale_filtrato is not None}, lunghezza: {len(segnale_filtrato) if segnale_filtrato is not None else 'None'}")
         status_label.config(text="Stato: Analisi ESP32 completata")
         return segnale_filtrato
@@ -279,6 +279,7 @@ tk.Button(window, text="Scegli File", command=lambda: seleziona_file(percorso_fi
 tk.Button(window, text="Acquisisci da ESP32", command=lambda: avvia_acquisizione(status_label, percorso_file_var)).grid(row=1, column=1, padx=5, pady=5)
 tk.Button(window, text="Visualizza", command=lambda: visualizza_file(percorso_file_var, status_label, media_scorrevole_var, ax1, ax2, fig, bits_text, risultato_text)).grid(row=2, column=1, padx=5, pady=5)
 tk.Button(window, text="Analizza", command=lambda: analizza_file(percorso_file_var, status_label, bits_text)).grid(row=3, column=1, padx=5, pady=5)
+tk.Button(window, text="ANA2", command=lambda: analizza_file(percorso_file_var, status_label, bits_text, somma_offset_4096=True)).grid(row=3, column=2, padx=5, pady=5)
 tk.Button(window, text="Correlazione", command=lambda: esegui_correlazione(percorso_file_var, status_label, risultato_text, media_scorrevole_var)).grid(row=4, column=1, padx=5, pady=5)
 
 tk.Checkbutton(window, text="Abilita Media Scorrevole", variable=media_scorrevole_var).grid(row=5, column=1, padx=5, pady=5)

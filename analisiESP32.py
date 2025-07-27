@@ -28,7 +28,7 @@ def media_correlazione_32(segnale, larghezza_finestra=8, lunghezza_correlazione=
     distanze = []
     bits32 = []
     bytes32 = []
-    soglia_mezzo_bit = 24
+    soglia_mezzo_bit = 25
     stato_decodifica = 0
     contatore_zeri = 0
     contatore_bytes = 0
@@ -126,7 +126,10 @@ def media_correlazione_32(segnale, larghezza_finestra=8, lunghezza_correlazione=
             elif stato_decodifica ==1:    #2006   == 1: potrebbe essre 2 in caso di doppia correzione
                 if True:   #2006 nuova_distanza < soglia_mezzo_bit:
                     # PRIMA PROVA: se la somma delle ultime due distanze è maggiore di 42 allora il primo era un 1 e il secondo è l'inizio di uno zero
-                    if len(distanze) >= 2 and (nuova_distanza + distanze[-2]) >= 42:    #2006 era 46
+                    confro=42
+                    if len(bits32) >= 2 and bits32[-1][0]==1: 
+                        confro=48
+                    if len(distanze) >= 2 and (nuova_distanza + distanze[-2]) >= confro:    #2006 era 46 e poi 42
                     #if len(distanze) >= 2 and (nuova_distanza + distanze[-2]) >= 42 and (distanze[-2]-nuova_distanza)>2: 
                                                
                         bits32.append((1, i-24-nuova_distanza))
@@ -254,7 +257,7 @@ def analizza_con_buffer_scorrevole(percorso_file, status_label, log_callback=Non
     
     # Applica la somma con offset 4096 se richiesto
     if somma_offset_4096 and len(segnale) >= 4096:
-        for i in range(len(segnale) - 4080):
+        for i in range(len(segnale) - 4080):  
             segnale[i] += segnale[i + 4080]
         print("Debug: Somma con offset 4096 applicata al buffer")
     

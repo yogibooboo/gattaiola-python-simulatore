@@ -19,7 +19,7 @@ def genera_nome_file(base_path="D:\\downloads", nome_base="adc_buffer", estensio
     return file_path
 
 async def acquisisci_da_esp32(status_label, percorso_file_var):
-    uri = "ws://192.168.1.105/ws"
+    uri = "ws://192.168.0.106/ws"
     try:
         status_label.config(text="Stato: Connessione in corso...")
         async with websockets.connect(uri) as websocket:

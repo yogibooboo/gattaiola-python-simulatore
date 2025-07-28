@@ -6,9 +6,18 @@ import os
 import struct
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.dates import DateFormatter
 from scipy.signal import find_peaks
 import analisiESP32
 import correlazione
+import porta
+import config
+from datetime import datetime, timedelta
+
+# Variabili globali per la figura e gli assi
+fig = None
+ax1 = None
+ax2 = None
 
 def genera_nome_file(base_path="D:\\downloads", nome_base="adc_buffer", estensione=".bin"):
     file_path = os.path.join(base_path, f"{nome_base}{estensione}")
@@ -19,7 +28,7 @@ def genera_nome_file(base_path="D:\\downloads", nome_base="adc_buffer", estensio
     return file_path
 
 async def acquisisci_da_esp32(status_label, percorso_file_var):
-    uri = "ws://192.168.0.106/ws"
+    uri = config.ESP32_WS_URI 
     try:
         status_label.config(text="Stato: Connessione in corso...")
         async with websockets.connect(uri) as websocket:
@@ -56,7 +65,8 @@ def seleziona_file(percorso_file_var, status_label):
         percorso_file_var.set(percorso_file)
         status_label.config(text=f"Stato: File selezionato: {percorso_file}")
 
-def visualizza_file(percorso_file_var, status_label, media_scorrevole_var, ax1, ax2, fig, bits_text, risultato_text):
+def visualizza_file(percorso_file_var, status_label, media_scorrevole_var, bits_text, risultato_text):
+    global fig, ax1, ax2
     percorso_file = percorso_file_var.get()
     if not percorso_file or not os.path.exists(percorso_file):
         status_label.config(text="Errore: Nessun file selezionato o file non trovato")
@@ -142,6 +152,12 @@ def visualizza_file(percorso_file_var, status_label, media_scorrevole_var, ax1, 
                 crc_reversed |= 1 << (15 - i)
         crc_ok = crc_ricevuto == crc_reversed
         crc_calcolato = crc_reversed
+
+    # Crea la figura se non esiste
+    if fig is None:
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 6))
+        plt.tight_layout(pad=2.0)
+        fig.canvas.mpl_connect('motion_notify_event', sincronizza_assi(ax1, ax2, fig))
 
     ax1.clear()
     ax2.clear()
@@ -257,6 +273,13 @@ def esegui_correlazione(percorso_file_var, status_label, risultato_text, media_s
         status_label.config(text=f"Errore: Correlazione fallita: {e}")
         risultato_text.insert(tk.END, f"Errore: {e}\n")
 
+def visualizza_stato_porta_da_file(percorso_file_var, status_label):
+    percorso_file = percorso_file_var.get()
+    if not percorso_file or not os.path.exists(percorso_file):
+        status_label.config(text="Errore: Nessun file selezionato o file non trovato")
+        return
+    porta.visualizza_stato_porta_da_file(percorso_file, status_label)
+
 def sincronizza_assi(ax1, ax2, fig):
     def handler(event):
         if event.inaxes == ax1:
@@ -277,27 +300,24 @@ tk.Entry(window, textvariable=percorso_file_var, width=50).grid(row=0, column=1,
 tk.Button(window, text="Scegli File", command=lambda: seleziona_file(percorso_file_var, status_label)).grid(row=0, column=2, padx=5, pady=5)
 
 tk.Button(window, text="Acquisisci da ESP32", command=lambda: avvia_acquisizione(status_label, percorso_file_var)).grid(row=1, column=1, padx=5, pady=5)
-tk.Button(window, text="Visualizza", command=lambda: visualizza_file(percorso_file_var, status_label, media_scorrevole_var, ax1, ax2, fig, bits_text, risultato_text)).grid(row=2, column=1, padx=5, pady=5)
-tk.Button(window, text="Analizza", command=lambda: analizza_file(percorso_file_var, status_label, bits_text)).grid(row=3, column=1, padx=5, pady=5)
-tk.Button(window, text="ANA2", command=lambda: analizza_file(percorso_file_var, status_label, bits_text, somma_offset_4096=True)).grid(row=3, column=2, padx=5, pady=5)
-tk.Button(window, text="Correlazione", command=lambda: esegui_correlazione(percorso_file_var, status_label, risultato_text, media_scorrevole_var)).grid(row=4, column=1, padx=5, pady=5)
+tk.Button(window, text="Acquisisci stato porta", command=lambda: porta.acquisisci_stato_porta(status_label)).grid(row=1, column=2, padx=5, pady=5)
+tk.Button(window, text="Stato porta da file", command=lambda: visualizza_stato_porta_da_file(percorso_file_var, status_label)).grid(row=2, column=2, padx=5, pady=5)
+tk.Button(window, text="Visualizza", command=lambda: visualizza_file(percorso_file_var, status_label, media_scorrevole_var, bits_text, risultato_text)).grid(row=3, column=1, padx=5, pady=5)
+tk.Button(window, text="Analizza", command=lambda: analizza_file(percorso_file_var, status_label, bits_text)).grid(row=4, column=1, padx=5, pady=5)
+tk.Button(window, text="ANA2", command=lambda: analizza_file(percorso_file_var, status_label, bits_text, somma_offset_4096=True)).grid(row=4, column=2, padx=5, pady=5)
+tk.Button(window, text="Correlazione", command=lambda: esegui_correlazione(percorso_file_var, status_label, risultato_text, media_scorrevole_var)).grid(row=5, column=1, padx=5, pady=5)
 
-tk.Checkbutton(window, text="Abilita Media Scorrevole", variable=media_scorrevole_var).grid(row=5, column=1, padx=5, pady=5)
+tk.Checkbutton(window, text="Abilita Media Scorrevole", variable=media_scorrevole_var).grid(row=6, column=1, padx=5, pady=5)
 
 status_label = tk.Label(window, text="Stato: Inattivo")
-status_label.grid(row=6, column=1, padx=5, pady=5)
+status_label.grid(row=7, column=1, padx=5, pady=5)
 
-tk.Label(window, text="Risultato Decodifica:").grid(row=7, column=0, padx=5, pady=5, sticky="w")
+tk.Label(window, text="Risultato Decodifica:").grid(row=8, column=0, padx=5, pady=5, sticky="w")
 bits_text = tk.Text(window, height=10, width=60)
-bits_text.grid(row=8, column=0, columnspan=3, padx=5, pady=5)
+bits_text.grid(row=9, column=0, columnspan=3, padx=5, pady=5)
 
-tk.Label(window, text="Byte e CRC:").grid(row=9, column=0, padx=5, pady=5, sticky="w")
-risultato_text = tk.Text(window, height=20, width=60)
-risultato_text.grid(row=10, column=0, columnspan=3, padx=5, pady=5)
-
-fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 6))
-plt.tight_layout(pad=2.0)
-
-fig.canvas.mpl_connect('motion_notify_event', sincronizza_assi(ax1, ax2, fig))
+tk.Label(window, text="Byte e CRC:").grid(row=10, column=0, padx=5, pady=5, sticky="w")
+risultato_text = tk.Text(window, height=10, width=60)
+risultato_text.grid(row=11, column=0, columnspan=3, padx=5, pady=5)
 
 window.mainloop()

@@ -4,8 +4,8 @@ import matplotlib.pyplot as plt
 
 # Parametri globali
 FS = 134.2e3  # Frequenza di campionamento: 134.2 kHz
-R = 470e3     # Resistenza: 560 kΩ
-C = 82e-12    # Capacità: 82 pF
+R = 10e3     # Resistenza: 100 kΩ
+C = 1000e-12    # Capacità: 1000 pF
 
 def create_fdx_b_signal():
     # Parametri segnale

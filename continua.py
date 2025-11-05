@@ -9,16 +9,20 @@ import config
 
 # Flag globale per controllare l'acquisizione continua
 running = False
+# Contatori globali per buffer acquisiti e retry
+total_buffers = 0
+total_retries = 0
 
 def genera_nome_file(base_path="D:\\downloads\\porta", nome_base="porta", estensione=".bin"):
     """Genera un nome file con timestamp nella directory specificata."""
-    os.makedirs(base_path, exist_ok=True)  # Crea la directory se non esiste
+    os.makedirs(base_path, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     file_path = os.path.join(base_path, f"{nome_base}_{timestamp}{estensione}")
     return file_path
 
 async def acquisisci_stato_porta_async(status_label):
     """Acquisisce lo stato della porta dall'ESP32 e salva il file."""
+    global total_buffers
     uri = config.ESP32_WS_URI
     try:
         status_label.config(text="Stato: Connessione in corso...")
@@ -39,7 +43,7 @@ async def acquisisci_stato_porta_async(status_label):
             start_time = datetime.now()
             ignored_text_messages = 0
             max_ignored_messages = 5
-            max_wait_time = 30.0  # Timeout massimo per ricevere tutti i dati
+            max_wait_time = 30.0
 
             while not (buffer_received and json_received):
                 try:
@@ -47,7 +51,6 @@ async def acquisisci_stato_porta_async(status_label):
                         print("Debug: Timeout massimo raggiunto per ricevere buffer e JSON")
                         status_label.config(text="Errore: Timeout massimo raggiunto")
                         if buffer_received and (timestamp is None or magnitude is None):
-                            # Usa valori di default se il JSON non è arrivato
                             timestamp = datetime.now().timestamp()
                             magnitude = 0.0
                             json_received = True
@@ -99,22 +102,19 @@ async def acquisisci_stato_porta_async(status_label):
                     status_label.config(text=f"Errore: {e}")
                     return False
 
-            # Elaborazione del buffer e salvataggio del file
-            print(f"Debug: Stato finale - buffer_received: {buffer_received}, json_received: {json_received}")
             if buffer_data and timestamp is not None and magnitude is not None:
-                # Verifica lunghezza buffer
                 if len(buffer_data) != 32768:
                     status_label.config(text=f"Errore: Buffer di lunghezza errata ({len(buffer_data)} invece di 32768)")
                     return False
 
-                # Salva il file con intestazione
                 download_path = genera_nome_file()
-                num_campioni = len(buffer_data) // 2  # Ogni campione è uint16 (2 byte)
+                num_campioni = len(buffer_data) // 2
                 with open(download_path, "wb") as f:
                     f.write(struct.pack("<Idf", num_campioni, timestamp, magnitude))
                     f.write(buffer_data)
                 status_label.config(text=f"Stato: Buffer salvato in {download_path}")
                 print(f"Debug: Buffer salvato in {download_path}")
+                total_buffers += 1  # Incrementa il contatore dei buffer acquisiti
                 return True
 
             return False
@@ -124,7 +124,7 @@ async def acquisisci_stato_porta_async(status_label):
         status_label.config(text=f"Errore: {e}")
         return False
 
-def toggle_acquisizione(status_label, button, window):
+def toggle_acquisizione(status_label, button, window, stats_label):
     """Avvia o ferma l'acquisizione continua, aggiornando il pulsante e lo stato."""
     global running
     if not running:
@@ -132,44 +132,60 @@ def toggle_acquisizione(status_label, button, window):
         button.config(text="Ferma")
         status_label.config(text="Stato: Acquisizione continua avviata")
         print("Debug: Acquisizione continua avviata")
-        window.after(0, lambda: loop_continuo(status_label, window))
+        window.after(0, lambda: loop_continuo(status_label, window, stats_label))
     else:
         running = False
         button.config(text="Avvia")
         status_label.config(text="Stato: Acquisizione continua fermata")
         print("Debug: Acquisizione continua fermata")
 
-def loop_continuo(status_label, window):
-    """Esegue l'acquisizione ogni 30 minuti usando window.after."""
-    global running
+def loop_continuo(status_label, window, stats_label):
+    """Esegue l'acquisizione ogni 20 minuti con retry ogni minuto in caso di fallimento."""
+    global running, total_retries
     if not running:
         status_label.config(text="Stato: Acquisizione continua fermata")
         print("Debug: Loop continuo fermato")
         return
 
-    def run_single_acquisition():
-        try:
-            # Esegue l'acquisizione in modo sincrono
-            success = asyncio.run(acquisisci_stato_porta_async(status_label))
+    async def try_acquisition():
+        global total_retries
+        success = False
+        while not success and running:
+            success = await acquisisci_stato_porta_async(status_label)
             if success:
                 print(f"Debug: Acquisizione completata, file salvato")
                 status_label.config(text=f"Stato: Acquisizione completata: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
             else:
-                print("Debug: Acquisizione fallita")
-                status_label.config(text="Errore: Acquisizione fallita")
-                running = False
-                window.after(0, lambda: toggle_acquisizione(status_label, button, window))
-        except Exception as e:
-            print(f"Debug: Errore durante acquisizione continua: {e}")
-            status_label.config(text=f"Errore: Acquisizione continua fallita: {e}")
-            running = False
-            window.after(0, lambda: toggle_acquisizione(status_label, button, window))
+                total_retries += 1  # Incrementa il contatore dei retry
+                print(f"Debug: Tentativo fallito, retry #{total_retries} tra 1 minuto")
+                status_label.config(text=f"Errore: Acquisizione fallita, retry #{total_retries} tra 1 minuto")
+                stats_label.config(text=f"Buffer acquisiti: {total_buffers} | Retry totali: {total_retries}")
+                if running:
+                    await asyncio.sleep(60)  # Aspetta 1 minuto prima del retry
+            stats_label.config(text=f"Buffer acquisiti: {total_buffers} | Retry totali: {total_retries}")
 
-    run_single_acquisition()
-    # Pianifica la prossima acquisizione dopo 30 minuti (1800000 ms)
-    if running:
-        window.after(1800000, lambda: loop_continuo(status_label, window))
-        window.update()
+        return success
+
+    def schedule_next():
+        if running:
+            # Pianifica la prossima acquisizione dopo 20 minuti (1200000 ms)
+            window.after(1200000, lambda: loop_continuo(status_label, window, stats_label))
+            window.update()
+
+    # Esegue l'acquisizione in modo sincrono
+    try:
+        success = asyncio.run(try_acquisition())
+        if not success and not running:
+            status_label.config(text="Stato: Acquisizione continua fermata")
+            print("Debug: Acquisizione continua fermata durante i retry")
+        stats_label.config(text=f"Buffer acquisiti: {total_buffers} | Retry totali: {total_retries}")
+        schedule_next()
+    except Exception as e:
+        print(f"Debug: Errore durante acquisizione continua: {e}")
+        status_label.config(text=f"Errore: Acquisizione continua fallita: {e}")
+        stats_label.config(text=f"Buffer acquisiti: {total_buffers} | Retry totali: {total_retries}")
+        running = False
+        window.after(0, lambda: toggle_acquisizione(status_label, button, window, stats_label))
 
 # Crea la GUI
 window = tk.Tk()
@@ -178,7 +194,10 @@ window.title("Acquisizione Continua Porta")
 status_label = tk.Label(window, text="Stato: Inattivo")
 status_label.grid(row=0, column=0, padx=5, pady=5)
 
-button = tk.Button(window, text="Avvia", command=lambda: toggle_acquisizione(status_label, button, window))
-button.grid(row=1, column=0, padx=5, pady=5)
+stats_label = tk.Label(window, text="Buffer acquisiti: 0 | Retry totali: 0")
+stats_label.grid(row=1, column=0, padx=5, pady=5)
+
+button = tk.Button(window, text="Avvia", command=lambda: toggle_acquisizione(status_label, button, window, stats_label))
+button.grid(row=2, column=0, padx=5, pady=5)
 
 window.mainloop()
